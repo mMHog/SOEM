@@ -122,11 +122,13 @@ void simpletest(char *ifname)
 
             struct timeval tv;
             gettimeofday(&tv,NULL);
-            long int currenttime=tv.sec*1000000+tv.usec;
+            long int currenttime,inttime=tv.tv_sec*1000000+tv.tv_usec;
+            //printf("currenttime: %ld\n",currenttime);
 
 
             for(i = 1; i <= 10000; i++)
             {
+
                ec_send_processdata();
                wkc = ec_receive_processdata(EC_TIMEOUTRET);
 
@@ -150,9 +152,11 @@ void simpletest(char *ifname)
 
 
                     gettimeofday(&tv,NULL);
-                    currenttime=tv.sec*1000000+tv.usec-currenttime;
+                    currenttime=inttime+i*EC_CYCLE_TIME-tv.tv_sec*1000000-tv.tv_usec;
+                    printf("currenttime: %ld\n\n",currenttime);
 
                     osal_usleep((int)currenttime);
+                    // osal_usleep(600);
 
                 }
                 inOP = FALSE;
