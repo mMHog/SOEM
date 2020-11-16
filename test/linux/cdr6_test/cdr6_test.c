@@ -19,7 +19,7 @@
 
 #define EC_TIMEOUTMON 500
 
-#define EC_CYCLE_TIME 1000
+#define EC_CYCLE_TIME 1000000
 
 char IOmap[4096];
 OSAL_THREAD_HANDLE thread1;
@@ -119,6 +119,8 @@ void simpletest(char *ifname)
             printf("Operational state reached for all slaves.\n");
             inOP = TRUE;
                 /* cyclic loop */
+
+            ec_dcsync0(1, TRUE, EC_CYCLE_TIME, 0);
 
             struct timeval tv;
             gettimeofday(&tv,NULL);
