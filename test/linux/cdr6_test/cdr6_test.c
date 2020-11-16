@@ -29,6 +29,37 @@ volatile int wkc;
 boolean inOP;
 uint8 currentgroup = 0;
 
+struct RPdo_1 {
+    uint32 control_word;
+    uint32 target_position;
+};
+struct TPdo_1 {
+    uint32 status_word;
+    uint32 position_actual_value;
+};
+
+#define READ(slaveId, idx, sub, buf, comment)    \
+    {   \
+        buf=0;  \
+        int __s = sizeof(buf);    \
+        int __ret = ec_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);   \
+        printf("Slave: %d - Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment);    \
+     }
+
+#define WRITE(slaveId, idx, sub, buf, value, comment) \
+    {   \
+        int __s = sizeof(buf);  \
+        buf = value;    \
+        int __ret = ec_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);  \
+        printf("Slave: %d - Write at 0x%04x:%d => wkc: %d; data: 0x%.*x\t{%s}\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, comment);    \
+    }
+
+#define CHECKERROR(slaveId)   \
+{   \
+    ec_readstate();\
+    printf("EC> \"%s\" %x - %x [%s] \n", (char*)ec_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char*)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode));    \
+}
+
 void simpletest(char *ifname)
 {
     int i, j, oloop, iloop, chk;
