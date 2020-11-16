@@ -13,9 +13,13 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include <sys/time.h>
+
 #include "ethercat.h"
 
 #define EC_TIMEOUTMON 500
+
+#define EC_CYCLE_TIME 1000
 
 char IOmap[4096];
 OSAL_THREAD_HANDLE thread1;
@@ -84,6 +88,12 @@ void simpletest(char *ifname)
             printf("Operational state reached for all slaves.\n");
             inOP = TRUE;
                 /* cyclic loop */
+
+            struct timeval tv;
+            gettimeofday(&tv,NULL);
+            long int currenttime=tv.sec*1000000+tv.usec;
+
+
             for(i = 1; i <= 10000; i++)
             {
                ec_send_processdata();
@@ -106,7 +116,12 @@ void simpletest(char *ifname)
                         printf(" T:%"PRId64"\r",ec_DCtime);
                         needlf = TRUE;
                     }
-                    osal_usleep(5000);
+
+
+                    gettimeofday(&tv,NULL);
+                    currenttime=tv.sec*1000000+tv.usec-currenttime;
+
+                    osal_usleep((int)currenttime);
 
                 }
                 inOP = FALSE;
