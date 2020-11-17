@@ -1,5 +1,5 @@
 
-set(SOURCES cdr6_test.c)
-add_executable(cdr6_test ${SOURCES})
-target_link_libraries(cdr6_test soem)
-install(TARGETS cdr6_test DESTINATION bin)
+set(SOURCES dcsync_test.c)
+add_executable(dcsync_test ${SOURCES})
+target_link_libraries(dcsync_test soem)
+install(TARGETS dcsync_test DESTINATION bin)
