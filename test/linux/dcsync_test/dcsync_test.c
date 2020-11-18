@@ -49,11 +49,20 @@ uint8 currentgroup = 0;
 /* Slave Distributed Clock Configuration */
 boolean dcsync_enable = TRUE;
 
+struct RPdo {
+    uint16 control_word;
+    uint32 target_position;
+};
+struct TPdo {
+    uint16 status_word;
+    int32 actual_position;
+};
+
 #define READ(slaveId, idx, sub, buf, comment)    \
     {   \
         buf=0;  \
         int __s = sizeof(buf);    \
-        int __ret = ecx_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);   \
+        int __ret = ec_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);   \
         printf("Slave: %d - Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment);    \
      }
 
@@ -61,14 +70,14 @@ boolean dcsync_enable = TRUE;
     {   \
         int __s = sizeof(buf);  \
         buf = value;    \
-        int __ret = ecx_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);  \
+        int __ret = ec_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);  \
         printf("Slave: %d - Write at 0x%04x:%d => wkc: %d; data: 0x%.*x\t{%s}\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, comment);    \
     }
 
 #define CHECKERROR(slaveId)   \
 {   \
     ecx_readstate(&ecx_context);\
-    printf("EC> \"%s\" %x - %x [%s] \n", (char*)ecx_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char*)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode));    \
+    printf("EC> \"%s\" %x - %x [%s] \n", (char*)ec_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char*)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode));    \
 }
 
 static int slave_dc_config(uint16 slave)
@@ -83,7 +92,12 @@ static int slave_dc_config(uint16 slave)
 void redtest(char *ifname)
 {
    int cnt, i, oloop, iloop;
-   int j,k;
+   int j;
+   int a;
+
+
+    struct RPdo *commend;
+    struct TPdo *feedback;
 
    printf("Starting DC-sync test\n");
 
@@ -148,54 +162,49 @@ void redtest(char *ifname)
             inOP = TRUE;
             /* acyclic loop 5000 x 20ms = 10s */
 
-            for (k=1; k<=ec_slavecount; k++) {
-                 READ(k, 0x6041, 0, buf16, "*status word*");
-                 if(buf16 == 0x218)
-                 {
-                     WRITE(k, 0x6040, 0, buf16, 128, "*control word*"); usleep(100000);
-                     READ(k, 0x6041, 0, buf16, "*status word*");
-                 }
 
+                commend = (struct RPdo *)(ec_slave[1].outputs);
+                feedback = (struct TPdo *)(ec_slave[1].inputs);
 
-                 WRITE(k, 0x6040, 0, buf16, 0, "*control word*"); usleep(100000);
-                 READ(k, 0x6041, 0, buf16, "*status word*");
+                commend->control_word=128;
+                osal_usleep(1000000)
+                printf("c 128 s %d\n", feedback->status_word);
+                scanf("%D",&a);
+                commend->control_word=6;
+                osal_usleep(1000000)
+                printf("c 6 s %d\n", feedback->status_word);
+                scanf("%D",&a);
+                commend->control_word=7;
+                osal_usleep(1000000)
+                printf("c 7 s %d\n", feedback->status_word);
+                scanf("%D",&a);
+                commend->control_word=15;
+                osal_usleep(1000000)
+                printf("c 15 s %d\n", feedback->status_word);
+                scanf("%D",&a);
 
-                 WRITE(k, 0x6040, 0, buf16, 6, "*control word*"); usleep(100000);
-                 READ(k, 0x6041, 0, buf16, "*status word*");
+            // for(i = 1; i <= 5000; i++)
+            // {
+            //     /* BEGIN USER CODE */
 
-                 WRITE(k, 0x6040, 0, buf16, 7, "*control word*"); usleep(100000);
-                 READ(k, 0x6041, 0, buf16, "*status word*");
+            //    printf("Processdata cycle %5d , Wck %3d, DCtime %12ld, dt %12ld, O:",
+            //       dorun, wkc , ec_DCtime, gl_delta);
+            //    for(j = 0 ; j < oloop; j++)
+            //    {
+            //       printf(" %2.2x", *(ec_slave[0].outputs + j));
+            //    }
+            //    printf(" I:");
+            //    for(j = 0 ; j < iloop; j++)
+            //    {
+            //       printf(" %2.2x", *(ec_slave[0].inputs + j));
+            //    }
+            //    printf("\r");
+            //    fflush(stdout);
+            //    osal_usleep(20000);
 
-                 WRITE(k, 0x6040, 0, buf16, 15, "*control word*"); usleep(100000);
-                 READ(k, 0x6041, 0, buf16, "*status word*");
+            //    /* END USER CODE */
 
-                 CHECKERROR(k);
-                 READ(k, 0x1a0b, 0, buf8, "OpMode Display");
-
-                 READ(k, 0x1001, 0, buf8, "Error");
-             }
-            for(i = 1; i <= 5000; i++)
-            {
-                /* BEGIN USER CODE */
-
-               printf("Processdata cycle %5d , Wck %3d, DCtime %12ld, dt %12ld, O:",
-                  dorun, wkc , ec_DCtime, gl_delta);
-               for(j = 0 ; j < oloop; j++)
-               {
-                  printf(" %2.2x", *(ec_slave[0].outputs + j));
-               }
-               printf(" I:");
-               for(j = 0 ; j < iloop; j++)
-               {
-                  printf(" %2.2x", *(ec_slave[0].inputs + j));
-               }
-               printf("\r");
-               fflush(stdout);
-               osal_usleep(20000);
-
-               /* END USER CODE */
-
-            }
+            // }
             dorun = 0;
             inOP = FALSE;
          }
