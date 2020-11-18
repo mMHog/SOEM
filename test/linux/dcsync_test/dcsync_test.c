@@ -142,6 +142,10 @@ void redtest(char *ifname)
          expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
          printf("Calculated workcounter %d\n", expectedWKC);
 
+
+          WRITE(1, 0x6060, 0, buf8, 8, "OpMode");
+          READ(1, 0x6061, 0, buf8, "OpMode display");
+
          printf("Request operational state for all slaves\n");
          ec_slave[0].state = EC_STATE_OPERATIONAL;
          /* request OP state for all slaves */
