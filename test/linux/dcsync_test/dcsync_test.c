@@ -49,6 +49,28 @@ uint8 currentgroup = 0;
 /* Slave Distributed Clock Configuration */
 boolean dcsync_enable = TRUE;
 
+#define READ(slaveId, idx, sub, buf, comment)    \
+    {   \
+        buf=0;  \
+        int __s = sizeof(buf);    \
+        int __ret = ecx_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);   \
+        printf("Slave: %d - Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment);    \
+     }
+
+#define WRITE(slaveId, idx, sub, buf, value, comment) \
+    {   \
+        int __s = sizeof(buf);  \
+        buf = value;    \
+        int __ret = ecx_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);  \
+        printf("Slave: %d - Write at 0x%04x:%d => wkc: %d; data: 0x%.*x\t{%s}\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, comment);    \
+    }
+
+#define CHECKERROR(slaveId)   \
+{   \
+    ecx_readstate(&ecx_context);\
+    printf("EC> \"%s\" %x - %x [%s] \n", (char*)ecx_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char*)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode));    \
+}
+
 static int slave_dc_config(uint16 slave)
 {
 //  ec_dcsync0(slave,   active,           cycletime,  calc and copy time)
@@ -61,7 +83,7 @@ static int slave_dc_config(uint16 slave)
 void redtest(char *ifname)
 {
    int cnt, i, oloop, iloop;
-   int j;
+   int j,k;
 
    printf("Starting DC-sync test\n");
 
@@ -125,6 +147,33 @@ void redtest(char *ifname)
             printf("Operational state reached for all slaves.\n");
             inOP = TRUE;
             /* acyclic loop 5000 x 20ms = 10s */
+
+            for (k=1; k<=ec_slavecount; k++) {
+                 READ(k, 0x6041, 0, buf16, "*status word*");
+                 if(buf16 == 0x218)
+                 {
+                     WRITE(k, 0x6040, 0, buf16, 128, "*control word*"); usleep(100000);
+                     READ(k, 0x6041, 0, buf16, "*status word*");
+                 }
+
+
+                 WRITE(k, 0x6040, 0, buf16, 0, "*control word*"); usleep(100000);
+                 READ(k, 0x6041, 0, buf16, "*status word*");
+
+                 WRITE(k, 0x6040, 0, buf16, 6, "*control word*"); usleep(100000);
+                 READ(k, 0x6041, 0, buf16, "*status word*");
+
+                 WRITE(k, 0x6040, 0, buf16, 7, "*control word*"); usleep(100000);
+                 READ(k, 0x6041, 0, buf16, "*status word*");
+
+                 WRITE(k, 0x6040, 0, buf16, 15, "*control word*"); usleep(100000);
+                 READ(k, 0x6041, 0, buf16, "*status word*");
+
+                 CHECKERROR(k);
+                 READ(k, 0x1a0b, 0, buf8, "OpMode Display");
+
+                 READ(k, 0x1001, 0, buf8, "Error");
+             }
             for(i = 1; i <= 5000; i++)
             {
                 /* BEGIN USER CODE */
