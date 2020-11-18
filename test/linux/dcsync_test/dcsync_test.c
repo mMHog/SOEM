@@ -92,7 +92,7 @@ static int slave_dc_config(uint16 slave)
 void redtest(char *ifname)
 {
    int cnt, i, oloop, iloop;
-   int j;
+   //int j;
    int a;
 
 
@@ -167,21 +167,21 @@ void redtest(char *ifname)
                 feedback = (struct TPdo *)(ec_slave[1].inputs);
 
                 commend->control_word=128;
-                osal_usleep(1000000)
+                osal_usleep(1000000);
                 printf("c 128 s %d\n", feedback->status_word);
-                scanf("%D",&a);
+                scanf("%d",&a);
                 commend->control_word=6;
-                osal_usleep(1000000)
+                osal_usleep(1000000);
                 printf("c 6 s %d\n", feedback->status_word);
-                scanf("%D",&a);
+                scanf("%d",&a);
                 commend->control_word=7;
-                osal_usleep(1000000)
+                osal_usleep(1000000);
                 printf("c 7 s %d\n", feedback->status_word);
-                scanf("%D",&a);
+                scanf("%d",&a);
                 commend->control_word=15;
-                osal_usleep(1000000)
+                osal_usleep(1000000);
                 printf("c 15 s %d\n", feedback->status_word);
-                scanf("%D",&a);
+                scanf("%d",&a);
 
             // for(i = 1; i <= 5000; i++)
             // {
