@@ -51,7 +51,7 @@ boolean dcsync_enable = TRUE;
 
 struct RPdo {
     uint16 control_word;
-    uint32 target_position;
+    int32 target_position;
 };
 struct TPdo {
     uint16 status_word;
