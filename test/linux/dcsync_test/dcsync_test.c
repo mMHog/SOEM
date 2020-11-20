@@ -1,6 +1,6 @@
 /** \file
  * \brief Example code for Simple Open EtherCAT master with Distributed Clock Sync
- * 
+ *
  * Usage : dcsync_test [ifname1] [cycletime]
  * ifname is NIC interface, f.e. eth0
  * cycletime in us, f.e. 1000
@@ -50,12 +50,12 @@ uint8 currentgroup = 0;
 boolean dcsync_enable = TRUE;
 
 struct RPdo {
-    uint16 control_word;
-    int32 target_position;
+   uint16 control_word;
+   int32 target_position;
 };
 struct TPdo {
-    uint16 status_word;
-    int32 actual_position;
+   uint16 status_word;
+   int32 actual_position;
 };
 
 #define READ(slaveId, idx, sub, buf, comment)    \
@@ -83,9 +83,9 @@ struct TPdo {
 static int slave_dc_config(uint16 slave)
 {
 //  ec_dcsync0(slave,   active,           cycletime,  calc and copy time)
-    ec_dcsync0(slave,   dcsync_enable,    1000000U,   1000U);
-    printf("ec_dcsync0 called on slave %u\n",slave);
-    return 0;
+   ec_dcsync0(slave,   dcsync_enable,    1000000U,   1000U);
+   printf("ec_dcsync0 called on slave %u\n", slave);
+   return 0;
 }
 
 
@@ -96,27 +96,27 @@ void redtest(char *ifname)
    int a;
 
 
-    struct RPdo *commend;
-    struct TPdo *feedback;
+   struct RPdo *commend;
+   struct TPdo *feedback;
 
    printf("Starting DC-sync test\n");
 
    /* initialise SOEM, bind socket to ifname */
    if (ec_init(ifname))
    {
-      printf("ec_init on %s succeeded.\n",ifname);
+      printf("ec_init on %s succeeded.\n", ifname);
       /* find and auto-config slaves */
       if (ec_config_init(FALSE) > 0)   // == ec_config_init + ec_config_map
       {
-         printf("%d slaves found and configured.\n",ec_slavecount);
+         printf("%d slaves found and configured.\n", ec_slavecount);
 
          // PO2SOconfig is for registering a hook function that will be called when the slave does the transition
          // between Pre-OP and Safe-OP.
          if ((ec_slavecount >= 1)) {
-             for (cnt = 1; cnt <= ec_slavecount; cnt++) {
-                     printf("Found %s at position %d\n", ec_slave[cnt].name, cnt);
-                     ec_slave[cnt].PO2SOconfig = &slave_dc_config;
-             }
+            for (cnt = 1; cnt <= ec_slavecount; cnt++) {
+               printf("Found %s at position %d\n", ec_slave[cnt].name, cnt);
+               ec_slave[cnt].PO2SOconfig = &slave_dc_config;
+            }
          }
 
          /* Locate DC slaves, measure propagation delays. */
@@ -129,13 +129,13 @@ void redtest(char *ifname)
 
          /* read indevidual slave state and store in ec_slave[] */
          ec_readstate();
-         for(cnt = 1; cnt <= ec_slavecount ; cnt++)
+         for (cnt = 1; cnt <= ec_slavecount ; cnt++)
          {
             /* BEGIN USER CODE */
 
             printf("Slave:%d Name:%s Output size:%3dbits Input size:%3dbits State:%2d delay:%d.%d\n",
-                  cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
-                  ec_slave[cnt].state, (int)ec_slave[cnt].pdelay, ec_slave[cnt].hasdc);
+                   cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
+                   ec_slave[cnt].state, (int)ec_slave[cnt].pdelay, ec_slave[cnt].hasdc);
 
             /* END USER CODE */
          }
@@ -143,8 +143,8 @@ void redtest(char *ifname)
          printf("Calculated workcounter %d\n", expectedWKC);
 
 
-          WRITE(1, 0x6060, 0, buf8, 8, "OpMode");
-          READ(1, 0x6061, 0, buf8, "OpMode display");
+         WRITE(1, 0x6060, 0, buf8, 8, "OpMode");
+         READ(1, 0x6061, 0, buf8, "OpMode display");
 
          printf("Request operational state for all slaves\n");
          ec_slave[0].state = EC_STATE_OPERATIONAL;
@@ -167,25 +167,25 @@ void redtest(char *ifname)
             /* acyclic loop 5000 x 20ms = 10s */
 
 
-                commend = (struct RPdo *)(ec_slave[1].outputs);
-                feedback = (struct TPdo *)(ec_slave[1].inputs);
+            commend = (struct RPdo *)(ec_slave[1].outputs);
+            feedback = (struct TPdo *)(ec_slave[1].inputs);
 
-                commend->control_word=128;
-                osal_usleep(1000000);
-                printf("c 128 s %d\n", feedback->status_word);
-                scanf("%d",&a);
-                commend->control_word=6;
-                osal_usleep(1000000);
-                printf("c 6 s %d\n", feedback->status_word);
-                scanf("%d",&a);
-                commend->control_word=7;
-                osal_usleep(1000000);
-                printf("c 7 s %d\n", feedback->status_word);
-                scanf("%d",&a);
-                commend->control_word=15;
-                osal_usleep(1000000);
-                printf("c 15 s %d\n", feedback->status_word);
-                scanf("%d",&a);
+            commend->control_word = 128;
+            osal_usleep(1000000);
+            printf("c 128 s %d\n", feedback->status_word);
+            scanf("%d", &a);
+            commend->control_word = 6;
+            osal_usleep(1000000);
+            printf("c 6 s %d\n", feedback->status_word);
+            scanf("%d", &a);
+            commend->control_word = 7;
+            osal_usleep(1000000);
+            printf("c 7 s %d\n", feedback->status_word);
+            scanf("%d", &a);
+            commend->control_word = 15;
+            osal_usleep(1000000);
+            printf("c 15 s %d\n", feedback->status_word);
+            scanf("%d", &a);
 
             // for(i = 1; i <= 5000; i++)
             // {
@@ -215,15 +215,15 @@ void redtest(char *ifname)
          else
          {
             printf("Not all slaves reached operational state.\n");
-             ec_readstate();
-             for(i = 1; i<=ec_slavecount ; i++)
-             {
-                 if(ec_slave[i].state != EC_STATE_OPERATIONAL)
-                 {
-                     printf("Slave %d State=0x%2.2x StatusCode=0x%4.4x : %s\n",
+            ec_readstate();
+            for (i = 1; i <= ec_slavecount ; i++)
+            {
+               if (ec_slave[i].state != EC_STATE_OPERATIONAL)
+               {
+                  printf("Slave %d State=0x%2.2x StatusCode=0x%4.4x : %s\n",
                          i, ec_slave[i].state, ec_slave[i].ALstatuscode, ec_ALstatuscode2string(ec_slave[i].ALstatuscode));
-                 }
-             }
+               }
+            }
          }
          printf("Request safe operational state for all slaves\n");
          ec_slave[0].state = EC_STATE_SAFE_OP;
@@ -240,7 +240,7 @@ void redtest(char *ifname)
    }
    else
    {
-      printf("No socket connection on %s\nExcecute as root\n",ifname);
+      printf("No socket connection on %s\nExcecute as root\n", ifname);
    }
 }
 
@@ -268,9 +268,9 @@ void ec_sync(int64 reftime, int64 cycletime , int64 *offsettime)
    int64 delta;
    /* set linux sync point 50us later than DC sync, just as example */
    delta = (reftime - 50000) % cycletime;
-   if(delta> (cycletime / 2)) { delta= delta - cycletime; }
-   if(delta>0){ integral++; }
-   if(delta<0){ integral--; }
+   if (delta > (cycletime / 2)) { delta = delta - cycletime; }
+   if (delta > 0) { integral++; }
+   if (delta < 0) { integral--; }
    *offsettime = -(delta / 100) - (integral / 20);
    gl_delta = delta;
 }
@@ -289,20 +289,20 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
    toff = 0;
    dorun = 0;
    ec_send_processdata();
-   while(1)
+   while (1)
    {
       /* calculate next cycle start */
       add_timespec(&ts, cycletime + toff);
       /* wait to cycle start */
       clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, &tleft);
-      if (dorun>0)
+      if (dorun > 0)
       {
          /* BEGIN USER CODE */
          wkc = ec_receive_processdata(EC_TIMEOUTRET);
 
          dorun++;
          /* if we have some digital output, cycle */
-         if( digout ) *digout = (uint8) ((dorun / 16) & 0xff);
+         if ( digout ) *digout = (uint8) ((dorun / 16) & 0xff);
 
          if (ec_slave[0].hasdc)
          {
@@ -317,78 +317,78 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
 
 OSAL_THREAD_FUNC ecatcheck()
 {
-    int slave;
+   int slave;
 
-    while(1)
-    {
-        if( inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
-        {
-            if (needlf)
+   while (1)
+   {
+      if ( inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
+      {
+         if (needlf)
+         {
+            needlf = FALSE;
+            printf("\n");
+         }
+         /* one ore more slaves are not responding */
+         ec_group[currentgroup].docheckstate = FALSE;
+         ec_readstate();
+         for (slave = 1; slave <= ec_slavecount; slave++)
+         {
+            if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
             {
-               needlf = FALSE;
-               printf("\n");
-            }
-            /* one ore more slaves are not responding */
-            ec_group[currentgroup].docheckstate = FALSE;
-            ec_readstate();
-            for (slave = 1; slave <= ec_slavecount; slave++)
-            {
-               if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
+               ec_group[currentgroup].docheckstate = TRUE;
+               if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR))
                {
-                  ec_group[currentgroup].docheckstate = TRUE;
-                  if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR))
-                  {
-                     printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
-                     ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
-                     ec_writestate(slave);
-                  }
-                  else if(ec_slave[slave].state == EC_STATE_SAFE_OP)
-                  {
-                     printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
-                     ec_slave[slave].state = EC_STATE_OPERATIONAL;
-                     ec_writestate(slave);
-                  }
-                  else if(ec_slave[slave].state > EC_STATE_NONE)
-                  {
-                     if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
-                     {
-                        ec_slave[slave].islost = FALSE;
-                        printf("MESSAGE : slave %d reconfigured\n",slave);
-                     }
-                  }
-                  else if(!ec_slave[slave].islost)
-                  {
-                     /* re-check state */
-                     ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
-                     if (ec_slave[slave].state == EC_STATE_NONE)
-                     {
-                        ec_slave[slave].islost = TRUE;
-                        printf("ERROR : slave %d lost\n",slave);
-                     }
-                  }
+                  printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
+                  ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
+                  ec_writestate(slave);
                }
-               if (ec_slave[slave].islost)
+               else if (ec_slave[slave].state == EC_STATE_SAFE_OP)
                {
-                  if(ec_slave[slave].state == EC_STATE_NONE)
-                  {
-                     if (ec_recover_slave(slave, EC_TIMEOUTMON))
-                     {
-                        ec_slave[slave].islost = FALSE;
-                        printf("MESSAGE : slave %d recovered\n",slave);
-                     }
-                  }
-                  else
+                  printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
+                  ec_slave[slave].state = EC_STATE_OPERATIONAL;
+                  ec_writestate(slave);
+               }
+               else if (ec_slave[slave].state > EC_STATE_NONE)
+               {
+                  if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
                   {
                      ec_slave[slave].islost = FALSE;
-                     printf("MESSAGE : slave %d found\n",slave);
+                     printf("MESSAGE : slave %d reconfigured\n", slave);
+                  }
+               }
+               else if (!ec_slave[slave].islost)
+               {
+                  /* re-check state */
+                  ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
+                  if (ec_slave[slave].state == EC_STATE_NONE)
+                  {
+                     ec_slave[slave].islost = TRUE;
+                     printf("ERROR : slave %d lost\n", slave);
                   }
                }
             }
-            if(!ec_group[currentgroup].docheckstate)
-               printf("OK : all slaves resumed OPERATIONAL.\n");
-        }
-        osal_usleep(10000);
-    }
+            if (ec_slave[slave].islost)
+            {
+               if (ec_slave[slave].state == EC_STATE_NONE)
+               {
+                  if (ec_recover_slave(slave, EC_TIMEOUTMON))
+                  {
+                     ec_slave[slave].islost = FALSE;
+                     printf("MESSAGE : slave %d recovered\n", slave);
+                  }
+               }
+               else
+               {
+                  ec_slave[slave].islost = FALSE;
+                  printf("MESSAGE : slave %d found\n", slave);
+               }
+            }
+         }
+         if (!ec_group[currentgroup].docheckstate)
+            printf("OK : all slaves resumed OPERATIONAL.\n");
+      }
+      osal_usleep(10000);
+   }
 }
 
 #define stack64k (64 * 1024)
