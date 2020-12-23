@@ -95,6 +95,8 @@ void redtest(char *ifname)
    //int j;
    int a;
 
+   uint8 buf8;
+
 
    struct RPdo *commend;
    struct TPdo *feedback;
