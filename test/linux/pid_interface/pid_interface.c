@@ -25,10 +25,11 @@
 
 #include "ethercat.h"
 #include "data_handle.h"
+#include "pid.h"
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
-#define SERVO_NUMBER 18
+#define SERVO_NUMBER 6
 
 struct sched_param schedp;
 char IOmap[4096];
@@ -46,57 +47,60 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
+int enable = 0;
 uint8 currentgroup = 0;
 
 /* Slave Distributed Clock Configuration */
 boolean dcsync_enable = TRUE;
-typedef struct PACKED{
-    uint16 control_word;
-    int32 target_position;
-    int32 target_velocity;
-    int16 target_torque;
-    int8 op_mode;
+typedef struct PACKED
+{
+   uint16 control_word;
+   int32 target_position;
+   int32 target_velocity;
+   int16 target_torque;
+   int8 op_mode;
 } RPdo;
-typedef struct PACKED{
-    uint16 status_word;
-    int32 actual_position;
-    int32 actual_velocity;
-    int16 actual_torque;
-    int8 op_mode_display;
+typedef struct PACKED
+{
+   uint16 status_word;
+   int32 actual_position;
+   int32 actual_velocity;
+   int16 actual_torque;
+   int8 op_mode_display;
 } TPdo;
 
+RPdo *commend[SERVO_NUMBER];
+TPdo *feedback[SERVO_NUMBER];
 
+#define READ(slaveId, idx, sub, buf, comment)                                                                                                                      \
+   {                                                                                                                                                               \
+      buf = 0;                                                                                                                                                     \
+      int __s = sizeof(buf);                                                                                                                                       \
+      int __ret = ec_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);                                                                                 \
+      printf("Slave: %d - Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment); \
+   }
 
-#define READ(slaveId, idx, sub, buf, comment)    \
-    {   \
-        buf=0;  \
-        int __s = sizeof(buf);    \
-        int __ret = ec_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);   \
-        printf("Slave: %d - Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment);    \
-     }
+#define WRITE(slaveId, idx, sub, buf, value, comment)                                                                                       \
+   {                                                                                                                                        \
+      int __s = sizeof(buf);                                                                                                                \
+      buf = value;                                                                                                                          \
+      int __ret = ec_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);                                                          \
+      printf("Slave: %d - Write at 0x%04x:%d => wkc: %d; data: 0x%.*x\t{%s}\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, comment); \
+   }
 
-#define WRITE(slaveId, idx, sub, buf, value, comment) \
-    {   \
-        int __s = sizeof(buf);  \
-        buf = value;    \
-        int __ret = ec_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);  \
-        printf("Slave: %d - Write at 0x%04x:%d => wkc: %d; data: 0x%.*x\t{%s}\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, comment);    \
-    }
-
-#define CHECKERROR(slaveId)   \
-{   \
-    ecx_readstate(&ecx_context);\
-    printf("EC> \"%s\" %x - %x [%s] \n", (char*)ec_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char*)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode));    \
-}
+#define CHECKERROR(slaveId)                                                                                                                                                                     \
+   {                                                                                                                                                                                            \
+      ecx_readstate(&ecx_context);                                                                                                                                                              \
+      printf("EC> \"%s\" %x - %x [%s] \n", (char *)ec_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char *)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode)); \
+   }
 
 static int slave_dc_config(uint16 slave)
 {
-//  ec_dcsync0(slave,   active,           cycletime,  calc and copy time)
-    ec_dcsync0(slave,   dcsync_enable,    4000000U,   1220000U);
-    printf("ec_dcsync0 called on slave %u\n",slave);
-    return 0;
+   //  ec_dcsync0(slave,   active,           cycletime,  calc and copy time)
+   ec_dcsync0(slave, dcsync_enable, 4000000U, 1220000U);
+   printf("ec_dcsync0 called on slave %u\n", slave);
+   return 0;
 }
-
 
 void redtest(char *ifname)
 {
@@ -104,33 +108,32 @@ void redtest(char *ifname)
    //int j;
    //int a;
 
-    //uint32 buf32;
-    //uint16 buf16;
-    //uint8 buf8;
-   int init_position[SERVO_NUMBER];
-
-    RPdo *commend[SERVO_NUMBER];
-    TPdo *feedback[SERVO_NUMBER];
-
+   //uint32 buf32;
+   //uint16 buf16;
+   //uint8 buf8;
+   int init_position[SERVO_NUMBER] = {0};
+   init_position[0] += 0;
 
    printf("Starting DC-sync test\n");
 
    /* initialise SOEM, bind socket to ifname */
    if (ec_init(ifname))
    {
-      printf("ec_init on %s succeeded.\n",ifname);
+      printf("ec_init on %s succeeded.\n", ifname);
       /* find and auto-config slaves */
-      if (ec_config_init(FALSE) > 0)   // == ec_config_init + ec_config_map
+      if (ec_config_init(FALSE) > 0) // == ec_config_init + ec_config_map
       {
-         printf("%d slaves found and configured.\n",ec_slavecount);
+         printf("%d slaves found and configured.\n", ec_slavecount);
 
          // PO2SOconfig is for registering a hook function that will be called when the slave does the transition
          // between Pre-OP and Safe-OP.
-         if ((ec_slavecount >= 1)) {
-             for (cnt = 1; cnt <= ec_slavecount; cnt++) {
-                     printf("Found %s at position %d\n", ec_slave[cnt].name, cnt);
-                     ec_slave[cnt].PO2SOconfig = &slave_dc_config;
-             }
+         if ((ec_slavecount >= 1))
+         {
+            for (cnt = 1; cnt <= ec_slavecount; cnt++)
+            {
+               printf("Found %s at position %d\n", ec_slave[cnt].name, cnt);
+               ec_slave[cnt].PO2SOconfig = &slave_dc_config;
+            }
          }
 
          /* Locate DC slaves, measure propagation delays. */
@@ -139,17 +142,17 @@ void redtest(char *ifname)
          ec_config_map(&IOmap);
 
          /* wait for all slaves to reach SAFE_OP state */
-         ec_statecheck(0, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE);
+         ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE);
 
          /* read indevidual slave state and store in ec_slave[] */
          ec_readstate();
-         for(cnt = 1; cnt <= ec_slavecount ; cnt++)
+         for (cnt = 1; cnt <= ec_slavecount; cnt++)
          {
             /* BEGIN USER CODE */
 
             printf("Slave:%d Name:%s Output size:%3dbits Input size:%3dbits State:%2d delay:%d.%d\n",
-                  cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
-                  ec_slave[cnt].state, (int)ec_slave[cnt].pdelay, ec_slave[cnt].hasdc);
+                   cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
+                   ec_slave[cnt].state, (int)ec_slave[cnt].pdelay, ec_slave[cnt].hasdc);
 
             /* END USER CODE */
          }
@@ -163,125 +166,76 @@ void redtest(char *ifname)
          /* activate cyclic process data */
          dorun = 1;
          /* wait for all slaves to reach OP state */
-         ec_statecheck(0, EC_STATE_OPERATIONAL,  5 * EC_TIMEOUTSTATE);
+         ec_statecheck(0, EC_STATE_OPERATIONAL, 5 * EC_TIMEOUTSTATE);
          oloop = ec_slave[0].Obytes;
-         if ((oloop == 0) && (ec_slave[0].Obits > 0)) oloop = 1;
-         if (oloop > 8) oloop = 8;
+         if ((oloop == 0) && (ec_slave[0].Obits > 0))
+            oloop = 1;
+         if (oloop > 8)
+            oloop = 8;
          iloop = ec_slave[0].Ibytes;
-         if ((iloop == 0) && (ec_slave[0].Ibits > 0)) iloop = 1;
-         if (iloop > 8) iloop = 8;
-         if (ec_slave[0].state == EC_STATE_OPERATIONAL )
+         if ((iloop == 0) && (ec_slave[0].Ibits > 0))
+            iloop = 1;
+         if (iloop > 8)
+            iloop = 8;
+         if (ec_slave[0].state == EC_STATE_OPERATIONAL)
          {
             printf("Operational state reached for all slaves.\n");
             inOP = TRUE;
             /* acyclic loop 5000 x 20ms = 10s */
-            for (int i = 0; i < SERVO_NUMBER; i++)
+            for (int i = 0; i < 1; i++)
             {
-                commend[i] = (RPdo *)(ec_slave[i+1].outputs);
-                feedback[i] = (TPdo *)(ec_slave[i+1].inputs);
+               commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
+               feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
 
-                commend[i]->target_velocity=0;
-                commend[i]->target_torque=0;
-                commend[i]->op_mode=8;
+               commend[i]->target_velocity = 0;
+               commend[i]->target_torque = 0;
+               commend[i]->op_mode = 8;
 
-                commend[i]->control_word=128;
-                osal_usleep(100000);
-                printf("c 128 s %d\n", feedback[i]->status_word);
-                commend[i]->control_word=6;
-                osal_usleep(100000);
-                printf("c 6 s %d\n", feedback[i]->status_word);
-                commend[i]->control_word=7;
-                osal_usleep(100000);
-                printf("c 7 s %d\n", feedback[i]->status_word);
+               commend[i]->control_word = 128;
+               osal_usleep(100000);
+               printf("c 128 s %d\n", feedback[i]->status_word);
+               commend[i]->control_word = 6;
+               osal_usleep(100000);
+               printf("c 6 s %d\n", feedback[i]->status_word);
+               commend[i]->control_word = 7;
+               osal_usleep(100000);
+               printf("c 7 s %d\n", feedback[i]->status_word);
 
-                init_position[i]=feedback[i]->actual_position;
-                commend[i]->target_position=feedback[i]->actual_position;
-                commend[i]->control_word=15;
-                osal_usleep(100000);
-                printf("c 15 s %d\n", feedback[i]->status_word);
-                osal_usleep(100000);
+               init_position[i] = feedback[i]->actual_position;
+               commend[i]->target_position = feedback[i]->actual_position;
+               commend[i]->control_word = 15;
+               osal_usleep(100000);
+               printf("c 15 s %d\n", feedback[i]->status_word);
+               osal_usleep(100000);
             }
             printf("all to ready\n");
 
-            double load_data[18];
+            //double load_data[18];
             double outputx[1000000];
             int num;
-
-            for (int k = 0; k < SERVO_NUMBER; ++k)
+            PID_init();
+            // for (int k = 0; k < SERVO_NUMBER; ++k)
+            // {
+            //   printf("%d to zero\n", k);
+            //   num=data_process(outputx,rad2inc(0,k+1),init_position[k],200,10,0.1);
+            //   for (int i = 0; i < num; ++i)
+            //   {
+            //     commend[k]->target_position=(int)outputx[i];
+            //     osal_usleep(50);
+            //   }
+            // }
+            num = data_process(outputx, rad2inc(0, 1), init_position[0], 200, 10, 0.1);
+            for (int i = 0; i < num; ++i)
             {
-              printf("%d to zero\n", k);
-              num=data_process(outputx,rad2inc(0,k+1),init_position[k],200,10,0.1);
-              for (int i = 0; i < num; ++i)
-              {
-                commend[k]->target_position=(int)outputx[i];
-                osal_usleep(50);
-              }
+               commend[0]->target_position = (int)outputx[i];
+               osal_usleep(50);
+            }
+            osal_usleep(1000000);
+            enable = 1;
+            while (1)
+            {
             }
 
-
-            scanf("%lf %lf %lf %lf %lf %lf",&load_data[0],&load_data[1],&load_data[2],&load_data[3],&load_data[4],&load_data[5]);
-            scanf("%lf %lf %lf %lf %lf %lf",&load_data[6],&load_data[7],&load_data[8],&load_data[9],&load_data[10],&load_data[11]);
-            scanf("%lf %lf %lf %lf %lf %lf",&load_data[12],&load_data[13],&load_data[14],&load_data[15],&load_data[16],&load_data[17]);
-            for (int k = 0; k < SERVO_NUMBER; ++k)
-            {
-              printf("%d to init\n", k);
-              num=data_process(outputx,rad2inc(load_data[k],k+1),rad2inc(0,k+1),200,10,0.1);
-              for (int i = 0; i < num; ++i)
-              {
-                commend[k]->target_position=(int)outputx[i];
-                osal_usleep(50);
-              }
-              printf("%lf \n",inc2rad(feedback[k]->actual_position,k+1));
-            }
-
-
-
-
-            for (int i = 0; i < 1440048; ++i)
-            {
-              scanf("%lf %lf %lf %lf %lf %lf",&load_data[0],&load_data[1],&load_data[2],&load_data[3],&load_data[4],&load_data[5]);
-              scanf("%lf %lf %lf %lf %lf %lf",&load_data[6],&load_data[7],&load_data[8],&load_data[9],&load_data[10],&load_data[11]);
-              scanf("%lf %lf %lf %lf %lf %lf",&load_data[12],&load_data[13],&load_data[14],&load_data[15],&load_data[16],&load_data[17]);
-              commend[0]->target_position=rad2inc(load_data[0],1);
-              commend[1]->target_position=rad2inc(load_data[1],2);
-              commend[2]->target_position=rad2inc(load_data[2],3);
-              commend[3]->target_position=rad2inc(load_data[3],4);
-              commend[4]->target_position=rad2inc(load_data[4],5);
-              commend[5]->target_position=rad2inc(load_data[5],6);
-              commend[6]->target_position=rad2inc(load_data[6],7);
-              commend[7]->target_position=rad2inc(load_data[7],8);
-              commend[8]->target_position=rad2inc(load_data[8],9);
-              commend[9]->target_position=rad2inc(load_data[9],10);
-              commend[10]->target_position=rad2inc(load_data[10],11);
-              commend[11]->target_position=rad2inc(load_data[11],12);
-              commend[12]->target_position=rad2inc(load_data[12],13);
-              commend[13]->target_position=rad2inc(load_data[13],14);
-              commend[14]->target_position=rad2inc(load_data[14],15);
-              commend[15]->target_position=rad2inc(load_data[15],16);
-              commend[16]->target_position=rad2inc(load_data[16],17);
-              commend[17]->target_position=rad2inc(load_data[17],18);
-
-              /*printf("%lf ",inc2rad(feedback[0]->actual_position,1));
-              printf("%lf ",inc2rad(feedback[1]->actual_position,2));
-              printf("%lf ",inc2rad(feedback[2]->actual_position,3));
-              printf("%lf ",inc2rad(feedback[3]->actual_position,4));
-              printf("%lf ",inc2rad(feedback[4]->actual_position,5));
-              printf("%lf ",inc2rad(feedback[5]->actual_position,6));
-              printf("%lf ",inc2rad(feedback[6]->actual_position,7));
-              printf("%lf ",inc2rad(feedback[7]->actual_position,8));
-              printf("%lf ",inc2rad(feedback[8]->actual_position,9));
-              printf("%lf ",inc2rad(feedback[9]->actual_position,10));
-              printf("%lf ",inc2rad(feedback[10]->actual_position,11));
-              printf("%lf ",inc2rad(feedback[11]->actual_position,12));
-              printf("%lf ",inc2rad(feedback[12]->actual_position,13));
-              printf("%lf ",inc2rad(feedback[13]->actual_position,14));
-              printf("%lf ",inc2rad(feedback[14]->actual_position,15));
-              printf("%lf ",inc2rad(feedback[15]->actual_position,16));
-              printf("%lf ",inc2rad(feedback[16]->actual_position,17));
-              printf("%lf\n",inc2rad(feedback[17]->actual_position,18));*/
-
-             osal_usleep(50);
-            }
             // for(i = 1; i <= 5000; i++)
             // {
             //     /* BEGIN USER CODE */
@@ -310,15 +264,15 @@ void redtest(char *ifname)
          else
          {
             printf("Not all slaves reached operational state.\n");
-             ec_readstate();
-             for(i = 1; i<=ec_slavecount ; i++)
-             {
-                 if(ec_slave[i].state != EC_STATE_OPERATIONAL)
-                 {
-                     printf("Slave %d State=0x%2.2x StatusCode=0x%4.4x : %s\n",
+            ec_readstate();
+            for (i = 1; i <= ec_slavecount; i++)
+            {
+               if (ec_slave[i].state != EC_STATE_OPERATIONAL)
+               {
+                  printf("Slave %d State=0x%2.2x StatusCode=0x%4.4x : %s\n",
                          i, ec_slave[i].state, ec_slave[i].ALstatuscode, ec_ALstatuscode2string(ec_slave[i].ALstatuscode));
-                 }
-             }
+               }
+            }
          }
          printf("Request safe operational state for all slaves\n");
          ec_slave[0].state = EC_STATE_SAFE_OP;
@@ -335,7 +289,7 @@ void redtest(char *ifname)
    }
    else
    {
-      printf("No socket connection on %s\nExcecute as root\n",ifname);
+      printf("No socket connection on %s\nExcecute as root\n", ifname);
    }
 }
 
@@ -348,7 +302,7 @@ void add_timespec(struct timespec *ts, int64 addtime)
    sec = (addtime - nsec) / NSEC_PER_SEC;
    ts->tv_sec += sec;
    ts->tv_nsec += nsec;
-   if ( ts->tv_nsec > NSEC_PER_SEC )
+   if (ts->tv_nsec > NSEC_PER_SEC)
    {
       nsec = ts->tv_nsec % NSEC_PER_SEC;
       ts->tv_sec += (ts->tv_nsec - nsec) / NSEC_PER_SEC;
@@ -357,15 +311,24 @@ void add_timespec(struct timespec *ts, int64 addtime)
 }
 
 /* PI calculation to get linux time synced to DC time */
-void ec_sync(int64 reftime, int64 cycletime , int64 *offsettime)
+void ec_sync(int64 reftime, int64 cycletime, int64 *offsettime)
 {
    static int64 integral = 0;
    int64 delta;
    /* set linux sync point 50us later than DC sync, just as example */
    delta = (reftime - 50000) % cycletime;
-   if(delta> (cycletime / 2)) { delta= delta - cycletime; }
-   if(delta>0){ integral++; }
-   if(delta<0){ integral--; }
+   if (delta > (cycletime / 2))
+   {
+      delta = delta - cycletime;
+   }
+   if (delta > 0)
+   {
+      integral++;
+   }
+   if (delta < 0)
+   {
+      integral--;
+   }
    *offsettime = -(delta / 100) - (integral / 20);
    gl_delta = delta;
 }
@@ -373,31 +336,58 @@ void ec_sync(int64 reftime, int64 cycletime , int64 *offsettime)
 /* RT EtherCAT thread */
 OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
 {
-   struct timespec   ts, tleft;
+   struct timespec ts, tleft;
    int ht;
    int64 cycletime;
 
    clock_gettime(CLOCK_MONOTONIC, &ts);
    ht = (ts.tv_nsec / 1000000) + 1; /* round to nearest ms */
    ts.tv_nsec = ht * 1000000;
-   cycletime = *(int*)ptr * 1000; /* cycletime in ns */
+   cycletime = *(int *)ptr * 1000; /* cycletime in ns */
    toff = 0;
    dorun = 0;
+   int count = 0;
+   double speed, tt;
    ec_send_processdata();
-   while(1)
+   while (1)
    {
       /* calculate next cycle start */
       add_timespec(&ts, cycletime + toff);
       /* wait to cycle start */
       clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, &tleft);
-      if (dorun>0)
+      if (dorun > 0)
       {
          /* BEGIN USER CODE */
          wkc = ec_receive_processdata(EC_TIMEOUTRET);
+         if (enable > 0 && count <= 10000)
+         {
+            pid.ActualSpeed = inc2rad(feedback[0]->actual_position, 1);
+            if (count <= 50)
+            {
+               tt = 0.1 / 50 * count;
+               speed = PID_realize(0.1 / 50 * count);
+            }
+            else if (count <= 100)
+            {
+               tt = 0.1 - 0.1 / 50 * (count - 50);
+               speed = PID_realize(0.1 - 0.1 / 50 * (count - 50));
+            }else
+            {
+               speed = PID_realize(0.0);
+            }
+            
+            
+            commend[0]->target_position = rad2inc(speed, 1);
+            count++;
+            printf("%d:%lf %lf %lf\n", count,inc2rad(feedback[0]->actual_position,1),tt,speed);
+            if (count>=250 && inc2rad(feedback[0]->actual_position, 1)<=0.001)
+            {
+               return;
+            }
+            
+         }
 
-         dorun++;
-         /* if we have some digital output, cycle */
-         if( digout ) *digout = (uint8) ((dorun / 16) & 0xff);
+         dorun = 1;
 
          if (ec_slave[0].hasdc)
          {
@@ -412,78 +402,78 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
 
 OSAL_THREAD_FUNC ecatcheck()
 {
-    int slave;
+   int slave;
 
-    while(1)
-    {
-        if( inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
-        {
-            if (needlf)
+   while (1)
+   {
+      if (inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
+      {
+         if (needlf)
+         {
+            needlf = FALSE;
+            printf("\n");
+         }
+         /* one ore more slaves are not responding */
+         ec_group[currentgroup].docheckstate = FALSE;
+         ec_readstate();
+         for (slave = 1; slave <= ec_slavecount; slave++)
+         {
+            if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
             {
-               needlf = FALSE;
-               printf("\n");
-            }
-            /* one ore more slaves are not responding */
-            ec_group[currentgroup].docheckstate = FALSE;
-            ec_readstate();
-            for (slave = 1; slave <= ec_slavecount; slave++)
-            {
-               if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
+               ec_group[currentgroup].docheckstate = TRUE;
+               if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR))
                {
-                  ec_group[currentgroup].docheckstate = TRUE;
-                  if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR))
-                  {
-                     printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
-                     ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
-                     ec_writestate(slave);
-                  }
-                  else if(ec_slave[slave].state == EC_STATE_SAFE_OP)
-                  {
-                     printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
-                     ec_slave[slave].state = EC_STATE_OPERATIONAL;
-                     ec_writestate(slave);
-                  }
-                  else if(ec_slave[slave].state > EC_STATE_NONE)
-                  {
-                     if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
-                     {
-                        ec_slave[slave].islost = FALSE;
-                        printf("MESSAGE : slave %d reconfigured\n",slave);
-                     }
-                  }
-                  else if(!ec_slave[slave].islost)
-                  {
-                     /* re-check state */
-                     ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
-                     if (ec_slave[slave].state == EC_STATE_NONE)
-                     {
-                        ec_slave[slave].islost = TRUE;
-                        printf("ERROR : slave %d lost\n",slave);
-                     }
-                  }
+                  printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
+                  ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
+                  ec_writestate(slave);
                }
-               if (ec_slave[slave].islost)
+               else if (ec_slave[slave].state == EC_STATE_SAFE_OP)
                {
-                  if(ec_slave[slave].state == EC_STATE_NONE)
-                  {
-                     if (ec_recover_slave(slave, EC_TIMEOUTMON))
-                     {
-                        ec_slave[slave].islost = FALSE;
-                        printf("MESSAGE : slave %d recovered\n",slave);
-                     }
-                  }
-                  else
+                  printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
+                  ec_slave[slave].state = EC_STATE_OPERATIONAL;
+                  ec_writestate(slave);
+               }
+               else if (ec_slave[slave].state > EC_STATE_NONE)
+               {
+                  if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
                   {
                      ec_slave[slave].islost = FALSE;
-                     printf("MESSAGE : slave %d found\n",slave);
+                     printf("MESSAGE : slave %d reconfigured\n", slave);
+                  }
+               }
+               else if (!ec_slave[slave].islost)
+               {
+                  /* re-check state */
+                  ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
+                  if (ec_slave[slave].state == EC_STATE_NONE)
+                  {
+                     ec_slave[slave].islost = TRUE;
+                     printf("ERROR : slave %d lost\n", slave);
                   }
                }
             }
-            if(!ec_group[currentgroup].docheckstate)
-               printf("OK : all slaves resumed OPERATIONAL.\n");
-        }
-        osal_usleep(10000);
-    }
+            if (ec_slave[slave].islost)
+            {
+               if (ec_slave[slave].state == EC_STATE_NONE)
+               {
+                  if (ec_recover_slave(slave, EC_TIMEOUTMON))
+                  {
+                     ec_slave[slave].islost = FALSE;
+                     printf("MESSAGE : slave %d recovered\n", slave);
+                  }
+               }
+               else
+               {
+                  ec_slave[slave].islost = FALSE;
+                  printf("MESSAGE : slave %d found\n", slave);
+               }
+            }
+         }
+         if (!ec_group[currentgroup].docheckstate)
+            printf("OK : all slaves resumed OPERATIONAL.\n");
+      }
+      osal_usleep(10000);
+   }
 }
 
 #define stack64k (64 * 1024)
@@ -500,7 +490,7 @@ int main(int argc, char *argv[])
       ctime = atoi(argv[2]);
 
       /* create RT thread */
-      osal_thread_create_rt(&thread1, stack64k * 2, &ecatthread, (void*) &ctime);
+      osal_thread_create_rt(&thread1, stack64k * 2, &ecatthread, (void *)&ctime);
 
       /* create thread to handle slave error handling in OP */
       osal_thread_create(&thread2, stack64k * 4, &ecatcheck, NULL);
