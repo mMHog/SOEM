@@ -1,3 +1,11 @@
+/*
+ * @Author: your name
+ * @Date: 2021-04-12 13:17:25
+ * @LastEditTime: 2021-04-13 15:19:41
+ * @LastEditors: Please set LastEditors
+ * @Description: In User Settings Edit
+ * @FilePath: /SOEM/test/linux/pid_interface/mems_server.c
+ */
 
 #include <sys/shm.h>
 #include <unistd.h>

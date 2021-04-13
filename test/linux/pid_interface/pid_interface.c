@@ -22,6 +22,10 @@
 #include <time.h>
 #include <pthread.h>
 #include <math.h>
+#include <sys/shm.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/ipc.h>
 
 #include "ethercat.h"
 #include "data_handle.h"
@@ -47,8 +51,13 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-int enable = 0;
+int enable[SERVO_NUMBER] = {0,0,0,1,0,0};
+int all_enable;
 uint8 currentgroup = 0;
+
+key_t key;
+int shm_id;
+double *destination;
 
 /* Slave Distributed Clock Configuration */
 boolean dcsync_enable = TRUE;
@@ -71,7 +80,47 @@ typedef struct PACKED
 
 RPdo *commend[SERVO_NUMBER];
 TPdo *feedback[SERVO_NUMBER];
+int servo_init(int i)
+{
+   commend[i]->target_velocity = 0;
+   commend[i]->target_torque = 0;
+   commend[i]->op_mode = 8;
 
+   commend[i]->control_word = 128;
+   osal_usleep(100000);
+   printf("c 128 s %d\n", feedback[i]->status_word);
+   commend[i]->control_word = 6;
+   osal_usleep(100000);
+   printf("c 6 s %d\n", feedback[i]->status_word);
+   commend[i]->control_word = 7;
+   osal_usleep(100000);
+   printf("c 7 s %d\n", feedback[i]->status_word);
+   commend[i]->target_position = feedback[i]->actual_position;
+   commend[i]->control_word = 15;
+   osal_usleep(100000);
+   printf("c 15 s %d\n", feedback[i]->status_word);
+   osal_usleep(100000);
+   return feedback[i]->actual_position;
+}
+int servo_pause(int i)
+{
+   commend[i]->control_word = 7;
+   printf("c 7 s %d\n", feedback[i]->status_word);
+   return feedback[i]->actual_position;
+}
+int servo_continue(int i)
+{
+   commend[i]->target_position = feedback[i]->actual_position;
+   commend[i]->control_word = 15;
+   printf("c 15 s %d\n", feedback[i]->status_word);
+   return feedback[i]->actual_position;
+}
+int servo_stop(int i)
+{
+   commend[i]->control_word = 128;
+   printf("c 128 s %d\n", feedback[i]->status_word);
+   return feedback[i]->actual_position;
+}
 #define READ(slaveId, idx, sub, buf, comment)                                                                                                                      \
    {                                                                                                                                                               \
       buf = 0;                                                                                                                                                     \
@@ -105,12 +154,6 @@ static int slave_dc_config(uint16 slave)
 void redtest(char *ifname)
 {
    int cnt, i, oloop, iloop;
-   //int j;
-   //int a;
-
-   //uint32 buf32;
-   //uint16 buf16;
-   //uint8 buf8;
    int init_position[SERVO_NUMBER] = {0};
    init_position[0] += 0;
 
@@ -182,38 +225,40 @@ void redtest(char *ifname)
             printf("Operational state reached for all slaves.\n");
             inOP = TRUE;
             /* acyclic loop 5000 x 20ms = 10s */
-            for (int i = 0; i < 1; i++)
+
+            key = ftok("/dev/shm/myshm344", 0);
+            shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
+            destination = (double *)shmat(shm_id, NULL, 0);
+            for (int i = 0; i < SERVO_NUMBER; i++)
             {
                commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
                feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
+               if (enable[i]==1)
+               {
 
-               commend[i]->target_velocity = 0;
-               commend[i]->target_torque = 0;
-               commend[i]->op_mode = 8;
+                  init_position[i] = servo_init(i);
+                  destination[i] =inc2rad(init_position[i],i);
+                  PID_init(i);
+                  // double outputx[1000000];
+                  // int num;
+                  // num = data_process(outputx, rad2inc(0, i), init_position[i], 200, 10, 0.1);
+                  // for (int j = 0; j < num; ++j)
+                  // {
+                  //    commend[i]->target_position = (int)outputx[j];
+                  //    osal_usleep(50);
+                  // }
+                  // osal_usleep(1000000);
 
-               commend[i]->control_word = 128;
-               osal_usleep(100000);
-               printf("c 128 s %d\n", feedback[i]->status_word);
-               commend[i]->control_word = 6;
-               osal_usleep(100000);
-               printf("c 6 s %d\n", feedback[i]->status_word);
-               commend[i]->control_word = 7;
-               osal_usleep(100000);
-               printf("c 7 s %d\n", feedback[i]->status_word);
-
-               init_position[i] = feedback[i]->actual_position;
-               commend[i]->target_position = feedback[i]->actual_position;
-               commend[i]->control_word = 15;
-               osal_usleep(100000);
-               printf("c 15 s %d\n", feedback[i]->status_word);
-               osal_usleep(100000);
+                  commend[i]->op_mode = 9;
+                  enable[i] = 2;
+               }  
             }
+            all_enable=1;
             printf("all to ready\n");
 
             //double load_data[18];
-            double outputx[1000000];
-            int num;
-            PID_init();
+            //double outputx[1000000];
+            //int num;
             // for (int k = 0; k < SERVO_NUMBER; ++k)
             // {
             //   printf("%d to zero\n", k);
@@ -224,14 +269,14 @@ void redtest(char *ifname)
             //     osal_usleep(50);
             //   }
             // }
-            num = data_process(outputx, rad2inc(0, 1), init_position[0], 200, 10, 0.1);
-            for (int i = 0; i < num; ++i)
-            {
-               commend[0]->target_position = (int)outputx[i];
-               osal_usleep(50);
-            }
-            osal_usleep(1000000);
-            enable = 1;
+            // num = data_process(outputx, rad2inc(0, 0), init_position[0], 200, 10, 0.1);
+            // for (int i = 0; i < num; ++i)
+            // {
+            //    commend[0]->target_position = (int)outputx[i];
+            //    osal_usleep(50);
+            // }
+            // osal_usleep(1000000);
+            // enable[0] = 1;
             while (1)
             {
             }
@@ -359,34 +404,20 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
       {
          /* BEGIN USER CODE */
          wkc = ec_receive_processdata(EC_TIMEOUTRET);
-         if (enable > 0 && count <= 10000)
+         for (size_t i = 0; i < SERVO_NUMBER; i++)
          {
-            pid.ActualSpeed = inc2rad(feedback[0]->actual_position, 1);
-            if (count <= 50)
+            if (all_enable==1&&enable[i] == 2)
             {
-               tt = 0.1 / 50 * count;
-               speed = PID_realize(0.1 / 50 * count);
-            }
-            else if (count <= 100)
-            {
-               tt = 0.1 - 0.1 / 50 * (count - 50);
-               speed = PID_realize(0.1 - 0.1 / 50 * (count - 50));
-            }else
-            {
-               speed = PID_realize(0.0);
-            }
-            
-            
-            commend[0]->target_position = rad2inc(speed, 1);
-            count++;
-            printf("%d:%lf %lf %lf\n", count,inc2rad(feedback[0]->actual_position,1),tt,speed);
-            if (count>=250 && inc2rad(feedback[0]->actual_position, 1)<=0.001)
-            {
-               return;
-            }
-            
-         }
+               pid[i].ActualSpeed = inc2rad(feedback[i]->actual_position, i);
+               speed = PID_realize(destination[i], i);
+               tt = destination[i];
 
+               commend[i]->target_velocity = 100*(long int)(speed * 180 / 3.1415926 * incpdeg[i]);
+               //commend[i]->target_torque = -speed*10000;
+               count++;
+               printf("%lf %lf %lf\n",inc2rad(feedback[i]->actual_position, i), tt, speed);
+            }
+         }
          dorun = 1;
 
          if (ec_slave[0].hasdc)

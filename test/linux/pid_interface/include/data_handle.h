@@ -1,3 +1,14 @@
+/*
+ * @Author: your name
+ * @Date: 2021-04-10 14:01:38
+ * @LastEditTime: 2021-04-13 14:53:05
+ * @LastEditors: Please set LastEditors
+ * @Description: In User Settings Edit
+ * @FilePath: /SOEM/test/linux/pid_interface/include/data_handle.h
+ */
+#ifndef _DATA_HANDLE_H
+#define _DATA_HANDLE_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -12,14 +23,14 @@
 long int zero_position[18]={-60228,66246,242290,-103894,11890,306828,-30005,93729,224628,-134674,-196380,-1131660,-101830,-1794918,-1732384,137827,140254,-381659};
 long int incpdeg[18]={-53521,65238,-59738,-28017,-25486,-15969,-53521,65238,-59738,-28017,-25486,-15969,-55324,55706,-55708,-31147,-26970,26970};
 long int deg2inc(double deg,int i){
-   return (long int)(deg*incpdeg[i-1])+zero_position[i-1];
+   return (long int)(deg*incpdeg[i])+zero_position[i];
 }
 
 long int rad2inc(double rad,int i){
-   return (long int)(rad*180/3.1415926*incpdeg[i-1])+zero_position[i-1];
+   return (long int)(rad*180/3.1415926*incpdeg[i])+zero_position[i];
 }
 double inc2rad(long int inc,int i){
-   return (((double)(inc-zero_position[i-1]))/incpdeg[i-1])*3.1415926/180;
+   return (((double)(inc-zero_position[i]))/incpdeg[i])*3.1415926/180;
 }
 int data_process(double *outputx,double x2,double x1,double v,double a,double delta){
 	double x=x2-x1;
@@ -65,3 +76,5 @@ int data_process(double *outputx,double x2,double x1,double v,double a,double de
 	}
 	return(n1*2+n2+1);
 }
+
+#endif // !_DATA_HANDLE_H

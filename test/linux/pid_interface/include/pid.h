@@ -1,3 +1,14 @@
+/*
+ * @Author: your name
+ * @Date: 2021-04-10 15:36:48
+ * @LastEditTime: 2021-04-13 18:47:18
+ * @LastEditors: Please set LastEditors
+ * @Description: In User Settings Edit
+ * @FilePath: /SOEM/test/linux/pid_interface/include/pid.h
+ */
+#ifndef _PID_H
+#define _PID_H
+
 #include<stdio.h>
 #include<stdlib.h>
 struct _pid{
@@ -10,63 +21,65 @@ struct _pid{
 	double integral; //定义积分值
 	double umax;
 	double umin;
-}pid;
+}pid[18];
  
-void PID_init(){
+void PID_init(int i){
 	printf("PID_init begin \n");
-	pid.SetSpeed=0.0;
-	pid.ActualSpeed=0.0;
-	pid.err=0.0;
-	pid.err_last=0.0;
-	pid.voltage=0.0;
-	pid.integral=0.0;
-	pid.Kp=0.02;
-	pid.Ki=0.01; //注意，和上几次相比，这里加大了积分环节的值
-	pid.Kd=0.02;
-	pid.umax=400;
-	pid.umin=-200;
+	pid[i].SetSpeed=0.0;
+	pid[i].ActualSpeed=0.0;
+	pid[i].err=0.0;
+	pid[i].err_last=0.0;
+	pid[i].voltage=0.0;
+	pid[i].integral=0.0;
+	pid[i].Kp=0.02;
+	pid[i].Ki=0.0; //注意，和上几次相比，这里加大了积分环节的值
+	pid[i].Kd=0.002;
+	pid[i].umax=400;
+	pid[i].umin=-200;
 	printf("PID_init end \n");
 }
  
-double PID_realize(double speed){
+double PID_realize(double speed,int i){
 	int index;
-	pid.SetSpeed=speed;
-	pid.err=pid.SetSpeed-pid.ActualSpeed;
-	if(pid.ActualSpeed>pid.umax) //灰色底色表示抗积分饱和的实现
+	pid[i].SetSpeed=speed;
+	pid[i].err=pid[i].SetSpeed-pid[i].ActualSpeed;
+	if(pid[i].ActualSpeed>pid[i].umax) //灰色底色表示抗积分饱和的实现
 	{
-		if(abs(pid.err)>200) //蓝色标注为积分分离过程
+		if(abs(pid[i].err)>200) //蓝色标注为积分分离过程
 		{
 		index=0;
 		}else{
 			index=1;
-			if(pid.err<0)
+			if(pid[i].err<0)
 			{
-			pid.integral+=pid.err;
+			pid[i].integral+=pid[i].err;
 			}
 		}
-	}else if(pid.ActualSpeed<pid.umin){
-		if(abs(pid.err)>200) //积分分离过程
+	}else if(pid[i].ActualSpeed<pid[i].umin){
+		if(abs(pid[i].err)>200) //积分分离过程
 		{
 			index=0;
 		}else{
 			index=1;
-			if(pid.err>0)
+			if(pid[i].err>0)
 			{
-				pid.integral+=pid.err;
+				pid[i].integral+=pid[i].err;
 			}
 		}
 	}else{
-			if(abs(pid.err)>200) //积分分离过程
+			if(abs(pid[i].err)>200) //积分分离过程
 			{
 				index=0;
 			}else{
 				index=1;
-				pid.integral+=pid.err;
+				pid[i].integral+=pid[i].err;
 			}
 		}
 //	pid.voltage=pid.Kp*pid.err+index*pid.Ki*pid.integral+pid.Kd*(pid.err-pid.err_last);
-pid.voltage=pid.Kp*pid.err+index*pid.Ki*pid.integral/2+pid.Kd*(pid.err-pid.err_last);//梯形积分
-	pid.err_last=pid.err;
-	pid.ActualSpeed=pid.voltage*1.0;
-	return pid.ActualSpeed;
+pid[i].voltage=pid[i].Kp*pid[i].err+index*pid[i].Ki*pid[i].integral/2+pid[i].Kd*(pid[i].err-pid[i].err_last);//梯形积分
+	pid[i].err_last=pid[i].err;
+	pid[i].ActualSpeed=pid[i].voltage*1.0;
+	return pid[i].ActualSpeed;
 }
+
+#endif // !_PID_H
