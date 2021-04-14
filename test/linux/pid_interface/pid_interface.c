@@ -51,13 +51,12 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-int enable[SERVO_NUMBER] = {0,0,0,1,0,0};
+int enable[SERVO_NUMBER] = {0,0,1,0,0,0};
 int all_enable;
 uint8 currentgroup = 0;
 
 key_t key;
 int shm_id;
-double *destination;
 
 /* Slave Distributed Clock Configuration */
 boolean dcsync_enable = TRUE;
@@ -78,6 +77,14 @@ typedef struct PACKED
    int8 op_mode_display;
 } TPdo;
 
+typedef struct
+{
+   int control_word;
+   double position_command;
+   double positon_feedback;
+} Transfer;
+
+Transfer *tran;
 RPdo *commend[SERVO_NUMBER];
 TPdo *feedback[SERVO_NUMBER];
 int servo_init(int i)
@@ -228,16 +235,19 @@ void redtest(char *ifname)
 
             key = ftok("/dev/shm/myshm344", 0);
             shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
-            destination = (double *)shmat(shm_id, NULL, 0);
+            tran = (Transfer *)shmat(shm_id, NULL, 0);
             for (int i = 0; i < SERVO_NUMBER; i++)
             {
                commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
                feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
+               tran[i].control_word = enable[i];
                if (enable[i]==1)
                {
 
                   init_position[i] = servo_init(i);
-                  destination[i] =inc2rad(init_position[i],i);
+                  tran[i].position_command =inc2rad(init_position[i],i);
+                  tran[i].positon_feedback = inc2rad(init_position[i], i);
+
                   PID_init(i);
                   // double outputx[1000000];
                   // int num;
@@ -279,6 +289,25 @@ void redtest(char *ifname)
             // enable[0] = 1;
             while (1)
             {
+               for (int i = 0; i < SERVO_NUMBER; i++)
+               {
+                  if (tran[i].control_word == 0 && enable[i] != 0)
+                  {
+                     printf("stop%d", i);
+                     servo_pause(i);
+                     enable[i]=0;
+                  }
+                  if (tran[i].control_word == 1 && enable[i] == 0)
+                  {
+                     printf("enable%d", i);
+                     init_position[i] = servo_init(i);
+                     tran[i].position_command = inc2rad(init_position[i], i);
+                     tran[i].positon_feedback = inc2rad(init_position[i], i);
+                     PID_init(i);
+                     commend[i]->op_mode = 9;
+                     enable[i] = 2;
+                  }
+               }
             }
 
             // for(i = 1; i <= 5000; i++)
@@ -392,7 +421,8 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
    toff = 0;
    dorun = 0;
    int count = 0;
-   double speed, tt;
+   double speed,c,p; 
+   double v=0.1/2;
    ec_send_processdata();
    while (1)
    {
@@ -409,13 +439,24 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
             if (all_enable==1&&enable[i] == 2)
             {
                pid[i].ActualSpeed = inc2rad(feedback[i]->actual_position, i);
-               speed = PID_realize(destination[i], i);
-               tt = destination[i];
+               tran[i].positon_feedback = pid[i].ActualSpeed;
+               p = pid[i].ActualSpeed;
+               c = tran[i].position_command;
+               if ((c - p) >= v)
+               {
+                  c=p+v;
+               }
+               else if ((p - c) >= v)
+               {
+                  c = p - v;
+               }
+
+               speed = PID_realize(c, i);
 
                commend[i]->target_velocity = 100*(long int)(speed * 180 / 3.1415926 * incpdeg[i]);
                //commend[i]->target_torque = -speed*10000;
                count++;
-               printf("%lf %lf %lf\n",inc2rad(feedback[i]->actual_position, i), tt, speed);
+               printf("%lf %lf %lf\n",inc2rad(feedback[i]->actual_position, i), c, speed);
             }
          }
          dorun = 1;

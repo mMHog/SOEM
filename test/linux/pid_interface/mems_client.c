@@ -1,7 +1,7 @@
 /*
  * @Author: your name
  * @Date: 2021-04-12 13:17:53
- * @LastEditTime: 2021-04-13 18:13:41
+ * @LastEditTime: 2021-04-14 13:44:44
  * @LastEditors: Please set LastEditors
  * @Description: In User Settings Edit
  * @FilePath: /SOEM/test/linux/pid_interface/mems_client.c
@@ -13,14 +13,31 @@
 #include <stdio.h>
 #include <time.h>
 
+typedef struct
+{
+    int control_word;
+    double position_command;
+    double positon_feedback;
+} Transfer;
 int main()
 {
     key_t key = ftok("/dev/shm/myshm344", 0);
     int shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
-    double *p = (double *)shmat(shm_id, NULL, 0);
+    //double *p = (double *)shmat(shm_id, NULL, 0);
+    double p;
+    //int q;
+
+    Transfer *tran = (Transfer *)shmat(shm_id, NULL, 0);
+
     while (1)
     {
-        scanf("%lf", p + 3);
+    //     printf("control: ");
+    //     scanf("%d", &q);
+    //     tran[2].control_word = q;
+        printf("target: ");
+        scanf("%lf", &p);
+        tran[2].position_command = p;
+        printf("%lf\n",tran[2].positon_feedback);
     }
     //int a;scanf("%d",&a);
     //struct timespec tv;
@@ -34,7 +51,7 @@ int main()
 
     //memset(p, 1, sizeof(int));
     //printf("%d %d %d %d .\n", p[0], p[1], p[2], p[3]);
-    shmdt(p);
+    shmdt(tran);
 
     return 0;
 }
