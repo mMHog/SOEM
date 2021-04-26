@@ -33,7 +33,7 @@
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
-#define SERVO_NUMBER 6
+#define SERVO_NUMBER 18
 
 struct sched_param schedp;
 char IOmap[4096];
@@ -51,7 +51,8 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-int enable[SERVO_NUMBER] = {0,0,1,0,0,0};
+//int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1};
+int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
 uint8 currentgroup = 0;
 
@@ -456,11 +457,10 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                commend[i]->target_velocity = 100*(long int)(speed * 180 / 3.1415926 * incpdeg[i]);
                //commend[i]->target_torque = -speed*10000;
                count++;
-               printf("%lf %lf %lf\n",inc2rad(feedback[i]->actual_position, i), c, speed);
+               printf("%lf %lf %lf\n",inc2rad(feedback[i]->actual_position,i), c, speed);
             }
          }
          dorun = 1;
-
          if (ec_slave[0].hasdc)
          {
             /* calulate toff to get linux time and DC synced */

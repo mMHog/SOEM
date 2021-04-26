@@ -1,7 +1,7 @@
 /*
  * @Author: your name
  * @Date: 2021-04-10 14:01:38
- * @LastEditTime: 2021-04-13 14:53:05
+ * @LastEditTime: 2021-04-19 13:43:59
  * @LastEditors: Please set LastEditors
  * @Description: In User Settings Edit
  * @FilePath: /SOEM/test/linux/pid_interface/include/data_handle.h
@@ -20,8 +20,8 @@
 #include <pthread.h>
 #include <math.h>
 
-long int zero_position[18]={-60228,66246,242290,-103894,11890,306828,-30005,93729,224628,-134674,-196380,-1131660,-101830,-1794918,-1732384,137827,140254,-381659};
-long int incpdeg[18]={-53521,65238,-59738,-28017,-25486,-15969,-53521,65238,-59738,-28017,-25486,-15969,-55324,55706,-55708,-31147,-26970,26970};
+long int zero_position[18] = {-38852, 1005654, 243343, -126753, -186815, 310557, -72770, 67622, 255432, -109501, -7436, -1179597, -101830, -1794918, -1732384, 137827, 140254, -17116199};
+long int incpdeg[18]={-53521,65238,-59738,-28017,-25486,-15969,-53521,65238,-59738,-28017,-25486,-15969,-55324,55706,-55708,-31147,-26970,-26970};
 long int deg2inc(double deg,int i){
    return (long int)(deg*incpdeg[i])+zero_position[i];
 }

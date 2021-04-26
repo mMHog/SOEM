@@ -1,7 +1,7 @@
 /*
  * @Author: your name
  * @Date: 2021-04-12 13:17:53
- * @LastEditTime: 2021-04-14 13:44:44
+ * @LastEditTime: 2021-04-26 16:38:26
  * @LastEditors: Please set LastEditors
  * @Description: In User Settings Edit
  * @FilePath: /SOEM/test/linux/pid_interface/mems_client.c
@@ -25,19 +25,19 @@ int main()
     int shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
     //double *p = (double *)shmat(shm_id, NULL, 0);
     double p;
-    //int q;
+    int q;
 
     Transfer *tran = (Transfer *)shmat(shm_id, NULL, 0);
 
     while (1)
     {
-    //     printf("control: ");
-    //     scanf("%d", &q);
-    //     tran[2].control_word = q;
+        printf("control: ");
+        scanf("%d", &q);
+        tran[q-1].control_word = 1;
         printf("target: ");
         scanf("%lf", &p);
-        tran[2].position_command = p;
-        printf("%lf\n",tran[2].positon_feedback);
+        tran[q-1].position_command = p;
+        printf("%lf\n",tran[q-1].positon_feedback);
     }
     //int a;scanf("%d",&a);
     //struct timespec tv;
