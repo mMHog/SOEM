@@ -18,6 +18,10 @@ set(SOURCES mems_server.c)
 add_executable(mems_server ${SOURCES})
 install(TARGETS mems_server DESTINATION bin)
 
+set(SOURCES welder_client.c)
+add_executable(welder_client ${SOURCES})
+install(TARGETS welder_client DESTINATION bin)
+
 set(SOURCES mems_client.c)
 add_executable(mems_client ${SOURCES})
 install(TARGETS mems_client DESTINATION bin)

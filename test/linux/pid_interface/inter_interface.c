@@ -28,7 +28,15 @@
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
-#define SERVO_NUMBER 6
+#define SERVO_NUMBER 18
+
+#define WELD (1<<4)
+#define DRIVE (1<<6)
+#define RETRO (1<<5)
+
+#define V 82.0
+#define A 7.454545
+
 struct sched_param schedp;
 char IOmap[4096];
 pthread_t thread1, thread2;
@@ -45,10 +53,11 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
- int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1};
-//int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+//  int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1};
+int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
 // int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
+int w_enable;
 uint8 currentgroup = 0;
 
 key_t key;
@@ -73,6 +82,21 @@ typedef struct PACKED
     int8 op_mode_display;
 } TPdo;
 
+typedef struct PACKED
+{
+    uint16 dout;
+    int16 aout1;
+    int16 aout2;
+} WRPdo;
+typedef struct PACKED
+{
+    uint16 din;
+    int16 a;
+    int16 b;
+    int16 ain1;
+    int16 ain2;
+} WTPdo;
+
 typedef struct
 {
     int control_word;
@@ -80,9 +104,24 @@ typedef struct
     double positon_feedback;
 } Transfer;
 
+typedef struct
+{
+    int command;
+    int feedback;
+    double Icommand;
+    double Ucommand;
+    double Ifeedback;
+    double Ufeedback;
+} WTransfer;
+
 Transfer *tran;
 RPdo *commend[SERVO_NUMBER];
 TPdo *feedback[SERVO_NUMBER];
+
+WTransfer *wtran;
+WRPdo *wcommend[1];
+WTPdo *wfeedback[1];
+
 int servo_init(int i)
 {
     commend[i]->target_velocity = 0;
@@ -238,6 +277,8 @@ void redtest(char *ifname)
                 key = ftok("/dev/shm/myshm344", 0);
                 shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
                 tran = (Transfer *)shmat(shm_id, NULL, 0);
+                wtran=(WTransfer *)(tran+SERVO_NUMBER);
+
                 for (int i = 0; i < SERVO_NUMBER; i++)
                 {
                     commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
@@ -265,6 +306,20 @@ void redtest(char *ifname)
                         enable[i] = 2;
                     }
                 }
+
+                wcommend[0] = (WRPdo *)(ec_slave[SERVO_NUMBER + 1].outputs);
+                wfeedback[0] = (WTPdo *)(ec_slave[SERVO_NUMBER + 1].inputs);
+                
+
+                wtran->command=wcommend[0]->dout=0;
+                wtran->feedback=wfeedback[0]->din=0;
+                wtran->Icommand=wcommend[0]->aout1=0;
+                wtran->Ucommand=wcommend[0]->aout2=0;
+                wtran->Ifeedback=wfeedback[0]->ain1=0;
+                wtran->Ufeedback=wfeedback[0]->ain2=0;
+
+                w_enable=1;
+
                 all_enable = 1;
                 printf("all to ready\n");
 
@@ -462,6 +517,21 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                     count++;
                     printf("%ld %lf %lf %lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed);
                 }
+            }
+
+
+            if(all_enable == 1 && w_enable==1){
+                wcommend[0]->dout=wtran->command;
+
+                wtran->feedback=wfeedback[0]->din;
+
+                wcommend[0]->aout1=(int)wtran->Icommand*A;
+                wcommend[0]->aout2=(int)wtran->Ucommand*V;
+
+                wtran->Ifeedback=wfeedback[0]->ain1/A;
+                wtran->Ufeedback=wfeedback[0]->ain2/V;
+
+                printf("Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
             }
             if (all_enable==1)printf("\n");
 

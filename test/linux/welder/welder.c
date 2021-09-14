@@ -29,9 +29,10 @@
 #define WELD (1<<4)
 #define DRIVE (1<<6)
 #define RETRO (1<<5)
+#define CHECKGAS (1<<7)
 
-#define V (410/5.0)
-#define A (410/55.0)
+#define V 82.0
+#define A 7.454545
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
@@ -56,6 +57,7 @@ boolean inOP;
 //int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 // int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
+int w_enable;
 uint8 currentgroup = 0;
 
 key_t key;
@@ -66,17 +68,15 @@ boolean dcsync_enable = TRUE;
 typedef struct PACKED
 {
     uint16 dout;
-    int16 a;
     int16 aout1;
-    int16 b;
     int16 aout2;
 } RPdo;
 typedef struct PACKED
 {
     uint16 din;
-    int16 c;
+    int16 a;
+    int16 b;
     int16 ain1;
-    int16 d;
     int16 ain2;
 } TPdo;
 
@@ -467,14 +467,15 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                     //commend[i]->target_velocity = 100 * (long int)(speed * 180 / 3.1415926 * incpdeg[i]);
                     //commend[i]->target_torque = -speed*10000;
 
-                    commend[i]->dout=DRIVE|WELD;
+                    commend[i]->dout=WELD|DRIVE;
                     // commend[i]->dout|=RETRO;
 
-                    commend[i]->aout1=200*A;
-                    commend[i]->aout2=10*V;
+                    commend[i]->aout1=(int)0*A;
+                    commend[i]->aout2=(int)0*V;
 
                     count++;
-                    printf("Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%d Ufeedback:%d Icommand:%d Ucommand:%d\n", feedback[i]->din&1, (feedback[i]->din&(2))>>1, (commend[i]->dout&(1<<4))>>4, (commend[i]->dout&(1<<6))>>6, (commend[i]->dout&(1<<5))>>5, feedback[i]->ain1*55/410, feedback[i]->ain2*5/410, commend[i]->aout1*55/410, commend[i]->aout2*5/410);
+                    printf("Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", feedback[i]->din&1, (feedback[i]->din&(2))>>1, (commend[i]->dout&(1<<4))>>4, (commend[i]->dout&(1<<6))>>6, (commend[i]->dout&(1<<5))>>5, feedback[i]->ain1/A, feedback[i]->ain2/V, commend[i]->aout1/A, commend[i]->aout2/V);
+                    // printf("%d %d\n", feedback[i]->ain1,feedback[i]->ain2 );
                     // printf("%ld %lf %lf %lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed);
                 }
             }
