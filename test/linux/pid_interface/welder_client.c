@@ -43,10 +43,11 @@ int main()
     // double p;
     int q;
 
-    Transfer *tran = (Transfer *)shmat(shm_id, NULL, 0);
-    WTransfer *wtran=(WTransfer *)(tran+SERVO_NUMBER);
+    // Transfer *tran = (Transfer *)shmat(shm_id, NULL, 0);
+    // WTransfer *wtran=(WTransfer *)(tran+SERVO_NUMBER);
+    WTransfer *wtran=(WTransfer *)shmat(shm_id, NULL, 0);;
 
-    wtran->Icommand=150;
+    wtran->Icommand=180;
     wtran->Ucommand=10;
 
     while (1)
@@ -72,7 +73,7 @@ int main()
 
     //memset(p, 1, sizeof(int));
     //printf("%d %d %d %d .\n", p[0], p[1], p[2], p[3]);
-    shmdt(tran);
+    shmdt(wtran);
 
     return 0;
 }
