@@ -34,8 +34,8 @@
 #define DRIVE (1<<6)
 #define RETRO (1<<5)
 
-#define V 82.0
-#define A 7.454545
+#define V 54.61333
+#define A 5.46133
 
 struct sched_param schedp;
 char IOmap[4096];
@@ -522,6 +522,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
 
             if(all_enable == 1 && w_enable==1){
                 wcommend[0]->dout=wtran->command;
+                if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
 
                 wtran->feedback=wfeedback[0]->din;
 
@@ -531,7 +532,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                 wtran->Ifeedback=wfeedback[0]->ain1/A;
                 wtran->Ufeedback=wfeedback[0]->ain2/V;
 
-                printf("Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
+                printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
             }
             if (all_enable==1)printf("\n");
 

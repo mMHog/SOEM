@@ -26,17 +26,10 @@
 #include "data_handle.h"
 #include "inter.h"
 
-#define WELD (1<<4)
-#define DRIVE (1<<6)
-#define RETRO (1<<5)
-#define CHECKGAS (1<<7)
-
-#define V 54.61333
-#define A 5.46133
-
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
 #define SERVO_NUMBER 1
+
 struct sched_param schedp;
 char IOmap[4096];
 pthread_t thread1, thread2;
@@ -53,11 +46,10 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-//  int enable[SERVO_NUMBER] = {1};
-//int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+//  int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1};
+int enable[SERVO_NUMBER] = {1};
 // int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
-int w_enable;
 uint8 currentgroup = 0;
 
 key_t key;
@@ -67,18 +59,20 @@ int shm_id;
 boolean dcsync_enable = TRUE;
 typedef struct PACKED
 {
-    uint16 dout;
-    int16 aout1;
-    int16 aout2;
-} WRPdo;
+    uint16 control_word;
+    int32 target_position;
+    int32 target_velocity;
+    int16 target_torque;
+    int8 op_mode;
+} RPdo;
 typedef struct PACKED
 {
-    uint16 din;
-    int16 a;
-    int16 b;
-    int16 ain1;
-    int16 ain2;
-} WTPdo;
+    uint16 status_word;
+    int32 actual_position;
+    int32 actual_velocity;
+    int16 actual_torque;
+    int8 op_mode_display;
+} TPdo;
 
 typedef struct
 {
@@ -87,68 +81,57 @@ typedef struct
     double positon_feedback;
 } Transfer;
 
-typedef struct
+Transfer *tran;
+RPdo *commend[SERVO_NUMBER];
+TPdo *feedback[SERVO_NUMBER];
+
+int servo_init(int i)
 {
-    int command;
-    int feedback;
-    double Icommand;
-    double Ucommand;
-    double Ifeedback;
-    double Ufeedback;
-} WTransfer;
+    commend[i]->target_velocity = 0;
+    commend[i]->target_torque = 0;
+    commend[i]->op_mode = 8;
 
-WTransfer *wtran;
-WRPdo *wcommend[1];
-WTPdo *wfeedback[1];
-// RPdo *commend[SERVO_NUMBER];
-// TPdo *feedback[SERVO_NUMBER];
-// int servo_init(int i)
-// {
-//     commend[i]->target_velocity = 0;
-//     commend[i]->target_torque = 0;
-//     commend[i]->op_mode = 8;
+    commend[i]->control_word = 128;
+    osal_usleep(100000);
+    printf("c 128 s %d\n", feedback[i]->status_word);
+    commend[i]->control_word = 6;
+    osal_usleep(100000);
+    printf("c 6 s %d\n", feedback[i]->status_word);
+    commend[i]->control_word = 7;
+    osal_usleep(100000);
+    printf("c 7 s %d\n", feedback[i]->status_word);
+    commend[i]->target_position = feedback[i]->actual_position;
+    commend[i]->control_word = 15;
+    osal_usleep(100000);
+    printf("c 15 s %d\n", feedback[i]->status_word);
+    if (feedback[i]->status_word != 34615 && feedback[i]->status_word != 49975)
+    {
+        printf("Fail to enable joint %d\n", i + 1);
+        exit(0);
+    }
 
-//     commend[i]->control_word = 128;
-//     osal_usleep(100000);
-//     printf("c 128 s %d\n", feedback[i]->status_word);
-//     commend[i]->control_word = 6;
-//     osal_usleep(100000);
-//     printf("c 6 s %d\n", feedback[i]->status_word);
-//     commend[i]->control_word = 7;
-//     osal_usleep(100000);
-//     printf("c 7 s %d\n", feedback[i]->status_word);
-//     commend[i]->target_position = feedback[i]->actual_position;
-//     commend[i]->control_word = 15;
-//     osal_usleep(100000);
-//     printf("c 15 s %d\n", feedback[i]->status_word);
-//     if (feedback[i]->status_word != 34615 && feedback[i]->status_word != 49975)
-//     {
-//         printf("Fail to enable joint %d\n", i + 1);
-//         exit(0);
-//     }
-
-//     osal_usleep(100000);
-//     return feedback[i]->actual_position;
-// }
-// int servo_pause(int i)
-// {
-//     commend[i]->control_word = 7;
-//     printf("c 7 s %d\n", feedback[i]->status_word);
-//     return feedback[i]->actual_position;
-// }
-// int servo_continue(int i)
-// {
-//     commend[i]->target_position = feedback[i]->actual_position;
-//     commend[i]->control_word = 15;
-//     printf("c 15 s %d\n", feedback[i]->status_word);
-//     return feedback[i]->actual_position;
-// }
-// int servo_stop(int i)
-// {
-//     commend[i]->control_word = 128;
-//     printf("c 128 s %d\n", feedback[i]->status_word);
-//     return feedback[i]->actual_position;
-// }
+    osal_usleep(100000);
+    return feedback[i]->actual_position;
+}
+int servo_pause(int i)
+{
+    commend[i]->control_word = 7;
+    printf("c 7 s %d\n", feedback[i]->status_word);
+    return feedback[i]->actual_position;
+}
+int servo_continue(int i)
+{
+    commend[i]->target_position = feedback[i]->actual_position;
+    commend[i]->control_word = 15;
+    printf("c 15 s %d\n", feedback[i]->status_word);
+    return feedback[i]->actual_position;
+}
+int servo_stop(int i)
+{
+    commend[i]->control_word = 128;
+    printf("c 128 s %d\n", feedback[i]->status_word);
+    return feedback[i]->actual_position;
+}
 #define READ(slaveId, idx, sub, buf, comment)                                                                                                                        \
     {                                                                                                                                                                \
         buf = 0;                                                                                                                                                     \
@@ -182,8 +165,8 @@ static int slave_dc_config(uint16 slave)
 void redtest(char *ifname)
 {
     int cnt, i, oloop, iloop;
-    // int init_position[SERVO_NUMBER] = {0};
-    // init_position[0] += 0;
+    int init_position[SERVO_NUMBER] = {0};
+    init_position[0] += 0;
 
     printf("Starting DC-sync test\n");
 
@@ -256,46 +239,36 @@ void redtest(char *ifname)
 
                 key = ftok("/dev/shm/myshm344", 0);
                 shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
-                wtran = (WTransfer *)shmat(shm_id, NULL, 0);
-                // for (int i = 0; i < SERVO_NUMBER; i++)
-                // {
-                //     commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
-                //     feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
-                //     tran[i].control_word = enable[i];
-                //     if (enable[i] == 1)
-                //     {
+                tran = (Transfer *)shmat(shm_id, NULL, 0);
 
-                //         // init_position[i] = servo_init(i);
-                //         // tran[i].position_command = inc2rad(init_position[i], i);
-                //         // tran[i].positon_feedback = inc2rad(init_position[i], i);
+                for (int i = 0; i < SERVO_NUMBER; i++)
+                {
+                    commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
+                    feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
+                    tran[i].control_word = enable[i];
+                    if (enable[i] == 1)
+                    {
 
-                //         // inter_init(inc2rad(init_position[i], i), i);
-                //         // double outputx[1000000];
-                //         // int num;
-                //         // num = data_process(outputx, rad2inc(0, i), init_position[i], 200, 10, 0.1);
-                //         // for (int j = 0; j < num; ++j)
-                //         // {
-                //         //    commend[i]->target_position = (int)outputx[j];
-                //         //    osal_usleep(50);
-                //         // }
-                //         // osal_usleep(1000000);
+                        init_position[i] = servo_init(i);
+                        tran[i].position_command = inc2rad(init_position[i], i);
+                        tran[i].positon_feedback = inc2rad(init_position[i], i);
 
-                //         //commend[i]->op_mode = 8;
-                //         enable[i] = 2;
-                //     }
-                // }
-                wcommend[0] = (WRPdo *)(ec_slave[1].outputs);
-                wfeedback[0] = (WTPdo *)(ec_slave[1].inputs);
-                
+                        inter_init(inc2rad(init_position[i], i), i);
+                        // double outputx[1000000];
+                        // int num;
+                        // num = data_process(outputx, rad2inc(0, i), init_position[i], 200, 10, 0.1);
+                        // for (int j = 0; j < num; ++j)
+                        // {
+                        //    commend[i]->target_position = (int)outputx[j];
+                        //    osal_usleep(50);
+                        // }
+                        // osal_usleep(1000000);
 
-                wtran->command=wcommend[0]->dout=0;
-                wtran->feedback=wfeedback[0]->din=0;
-                wtran->Icommand=wcommend[0]->aout1=0;
-                wtran->Ucommand=wcommend[0]->aout2=0;
-                wtran->Ifeedback=wfeedback[0]->ain1=0;
-                wtran->Ufeedback=wfeedback[0]->ain2=0;
+                        //commend[i]->op_mode = 8;
+                        enable[i] = 2;
+                    }
+                }
 
-                w_enable=1;
                 all_enable = 1;
                 printf("all to ready\n");
 
@@ -322,25 +295,25 @@ void redtest(char *ifname)
                 // enable[0] = 1;
                 while (1)
                 {
-                    // for (int i = 0; i < SERVO_NUMBER; i++)
-                    // {
-                    //     if (tran[i].control_word == 0 && enable[i] != 0)
-                    //     {
-                    //         printf("stop%d", i);
-                    //         // servo_pause(i);
-                    //         enable[i] = 0;
-                    //     }
-                    //     if (tran[i].control_word == 1 && enable[i] == 0)
-                    //     {
-                    //         printf("enable%d", i);
-                    //         // init_position[i] = servo_init(i);
-                    //         // tran[i].position_command = inc2rad(init_position[i], i);
-                    //         // tran[i].positon_feedback = inc2rad(init_position[i], i);
-                    //         // inter_init(inc2rad(init_position[i], i), i);
-                    //         //commend[i]->op_mode = 8;
-                    //         enable[i] = 2;
-                    //     }
-                    // }
+                    for (int i = 0; i < SERVO_NUMBER; i++)
+                    {
+                        if (tran[i].control_word == 0 && enable[i] != 0)
+                        {
+                            printf("stop%d", i);
+                            servo_pause(i);
+                            enable[i] = 0;
+                        }
+                        if (tran[i].control_word == 1 && enable[i] == 0)
+                        {
+                            printf("enable%d", i);
+                            init_position[i] = servo_init(i);
+                            tran[i].position_command = inc2rad(init_position[i], i);
+                            tran[i].positon_feedback = inc2rad(init_position[i], i);
+                            inter_init(inc2rad(init_position[i], i), i);
+                            //commend[i]->op_mode = 8;
+                            enable[i] = 2;
+                        }
+                    }
                 }
 
                 // for(i = 1; i <= 5000; i++)
@@ -454,7 +427,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
     toff = 0;
     dorun = 0;
     int count = 0;
-    // double speed, c;
+    double speed, c;
     //double v = 0.1 / 2;
     ec_send_processdata();
     while (1)
@@ -467,58 +440,35 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
         {
             /* BEGIN USER CODE */
             wkc = ec_receive_processdata(EC_TIMEOUTRET);
-            // for (size_t i = 0; i < SERVO_NUMBER; i++)
-            // {
-            //     if (all_enable == 1 && enable[i] == 2)
-            //     {
-            //         //inter[i].x = inc2rad(feedback[i]->actual_position, i);
-            //         // tran[i].positon_feedback = inc2rad(feedback[i]->actual_position, i);
-            //         // p = pid[i].ActualSpeed;
-            //         // c = tran[i].position_command;
-            //         // if ((c - p) >= v)
-            //         // {
-            //         //     c = p + v;
-            //         // }
-            //         // else if ((p - c) >= v)
-            //         // {
-            //         //     c = p - v;
-            //         // }
-            //         // speed = inter_realize(c, 150, i);
+            for (size_t i = 0; i < SERVO_NUMBER; i++)
+            {
+                if (all_enable == 1 && enable[i] == 2)
+                {
+                    //inter[i].x = inc2rad(feedback[i]->actual_position, i);
+                    tran[i].positon_feedback = inc2rad(feedback[i]->actual_position, i);
+                    // p = pid[i].ActualSpeed;
+                    c = tran[i].position_command;
+                    // if ((c - p) >= v)
+                    // {
+                    //     c = p + v;
+                    // }
+                    // else if ((p - c) >= v)
+                    // {
+                    //     c = p - v;
+                    // }
+                    speed = inter_realize(c, 150, i);
 
-            //         //    speed = PID_realize(c, i);
+                    //    speed = PID_realize(c, i);
 
-            //         // commend[i]->target_position = rad2inc(speed, i);
-            //         //commend[i]->target_velocity = 100 * (long int)(speed * 180 / 3.1415926 * incpdeg[i]);
-            //         //commend[i]->target_torque = -speed*10000;
-
-            //         commend[i]->dout=WELD|DRIVE;
-            //         // commend[i]->dout|=RETRO;
-
-            //         commend[i]->aout1=(int)0*A;
-            //         commend[i]->aout2=(int)0*V;
-
-            //         count++;
-            //         printf("Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", feedback[i]->din&1, (feedback[i]->din&(2))>>1, (commend[i]->dout&(1<<4))>>4, (commend[i]->dout&(1<<6))>>6, (commend[i]->dout&(1<<5))>>5, feedback[i]->ain1/A, feedback[i]->ain2/V, commend[i]->aout1/A, commend[i]->aout2/V);
-            //         // printf("%d %d\n", feedback[i]->ain1,feedback[i]->ain2 );
-            //         // printf("%ld %lf %lf %lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed);
-            //     }
-            // }
-            // if (all_enable==1)printf("\n");
-            if(all_enable == 1 && w_enable==1){
-                wcommend[0]->dout=wtran->command;
-                if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
-
-                wtran->feedback=wfeedback[0]->din;
-
-                wcommend[0]->aout1=(int)wtran->Icommand*A;
-                wcommend[0]->aout2=(int)wtran->Ucommand*V;
-
-                wtran->Ifeedback=wfeedback[0]->ain1/A;
-                wtran->Ufeedback=wfeedback[0]->ain2/V;
-
-                printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
+                    commend[i]->target_position = rad2inc(speed, i);
+                    //commend[i]->target_velocity = 100 * (long int)(speed * 180 / 3.1415926 * incpdeg[i]);
+                    //commend[i]->target_torque = -speed*10000;
+                    count++;
+                    printf("%ld %lf %lf %lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed);
+                }
             }
-            count++;
+            if (all_enable==1)printf("\n");
+
             dorun = 1;
             if (ec_slave[0].hasdc)
             {

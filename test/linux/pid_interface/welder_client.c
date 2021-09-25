@@ -12,6 +12,20 @@
 #include <sys/ipc.h>
 #include <stdio.h>
 #include <time.h>
+#include <time.h>
+#include <sys/time.h>
+#include <stdlib.h>
+
+#define USECS_PER_SEC     1000000
+
+int osal_usleep (unsigned int usec)
+{
+   struct timespec ts;
+   ts.tv_sec = usec / USECS_PER_SEC;
+   ts.tv_nsec = (usec % USECS_PER_SEC) * 1000;
+   /* usleep is deprecated, use nanosleep instead */
+   return nanosleep(&ts, NULL);
+}
 
 
 #define SERVO_NUMBER 18
@@ -19,6 +33,7 @@
 #define WELD (1<<4)
 #define DRIVE (1<<6)
 #define RETRO (1<<5)
+#define GAS (1<<7)
 
 typedef struct
 {
@@ -47,17 +62,29 @@ int main()
     // WTransfer *wtran=(WTransfer *)(tran+SERVO_NUMBER);
     WTransfer *wtran=(WTransfer *)shmat(shm_id, NULL, 0);;
 
-    wtran->Icommand=180;
-    wtran->Ucommand=10;
+    // wtran->Icommand=50;
+    // wtran->Ucommand=10;
 
     while (1)
     {
         printf("control: ");
         scanf("%d", &q);
         if(q==1){
-          wtran->command = WELD|DRIVE;
+          wtran->Icommand=120;
+          wtran->Ucommand=16;
+          wtran->command = WELD;
+          osal_usleep(1000000);
+          wtran->Icommand=100;
+        }else if(q==2){
+          wtran->command = DRIVE;
+        }else if(q==3){
+          wtran->command = RETRO;
+        }else if(q==4){
+          wtran->command = GAS;
         }else if(q==0){
           wtran->command = 0;
+          wtran->Icommand=0;
+          wtran->Ucommand=0;
         }
         // printf("%lf\n",wtran->positon_feedback);
     }
