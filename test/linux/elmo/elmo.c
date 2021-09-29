@@ -1,350 +1,429 @@
-/*
- * @Author: your name
- * @Date: 2021-04-15 13:51:33
- * @LastEditTime: 2021-05-11 16:50:53
- * @LastEditors: Please set LastEditors
- * @Description: In User Settings Edit
- * @FilePath: /SOEM/test/linux/pid_interface/inter_interface.h
- */
-
 #include <stdio.h>
-#include <stdlib.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sched.h>
 #include <string.h>
 #include <sys/time.h>
-#include <time.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <math.h>
 #include <sys/shm.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/ipc.h>
 
 #include "ethercat.h"
-#include "data_handle.h"
-#include "inter.h"
+#include "./include/config.h"
+#include "./include/inter.h"
+#include "./include/pid.h"
 
-#define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
-#define SERVO_NUMBER 1
 
-struct sched_param schedp;
-char IOmap[4096];
-pthread_t thread1, thread2;
-struct timeval tv, t1, t2;
-int dorun = 0;
-int deltat, tmax = 0;
-int64 toff, gl_delta;
-int DCdiff;
-int os;
-uint8 ob;
-uint16 ob2;
-uint8 *digout = 0;
+char IOmap[4096];  //定义映射内存区
+pthread_t thread1; //创建线程
 int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-//  int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1};
-int enable[SERVO_NUMBER] = {1};
-// int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
-int all_enable;
 uint8 currentgroup = 0;
-
-key_t key;
-int shm_id;
-
-/* Slave Distributed Clock Configuration */
-boolean dcsync_enable = TRUE;
-typedef struct PACKED
-{
-    uint16 control_word;
-    int32 target_position;
-    int32 target_velocity;
-    int16 target_torque;
-    int8 op_mode;
-} RPdo;
-typedef struct PACKED
-{
-    uint16 status_word;
-    int32 actual_position;
-    int32 actual_velocity;
-    int16 actual_torque;
-    int8 op_mode_display;
-} TPdo;
 
 typedef struct
 {
-    int control_word;
-    double position_command;
-    double positon_feedback;
+    int32 position;
+    uint32 digital;
+    uint16 status;
+} PositionOut;
+typedef struct
+{
+    int32 velocity;
+    uint16 status;
+} VelocityOut;
+typedef struct
+{
+    int32 position;
+    uint32 digital;
+    uint16 status;
+} PositionIn;
+
+typedef struct
+{
+    int position_command;
+    int positon_feedback;
 } Transfer;
 
 Transfer *tran;
-RPdo *commend[SERVO_NUMBER];
-TPdo *feedback[SERVO_NUMBER];
 
-int servo_init(int i)
-{
-    commend[i]->target_velocity = 0;
-    commend[i]->target_torque = 0;
-    commend[i]->op_mode = 8;
-
-    commend[i]->control_word = 128;
-    osal_usleep(100000);
-    printf("c 128 s %d\n", feedback[i]->status_word);
-    commend[i]->control_word = 6;
-    osal_usleep(100000);
-    printf("c 6 s %d\n", feedback[i]->status_word);
-    commend[i]->control_word = 7;
-    osal_usleep(100000);
-    printf("c 7 s %d\n", feedback[i]->status_word);
-    commend[i]->target_position = feedback[i]->actual_position;
-    commend[i]->control_word = 15;
-    osal_usleep(100000);
-    printf("c 15 s %d\n", feedback[i]->status_word);
-    if (feedback[i]->status_word != 34615 && feedback[i]->status_word != 49975)
-    {
-        printf("Fail to enable joint %d\n", i + 1);
-        exit(0);
-    }
-
-    osal_usleep(100000);
-    return feedback[i]->actual_position;
-}
-int servo_pause(int i)
-{
-    commend[i]->control_word = 7;
-    printf("c 7 s %d\n", feedback[i]->status_word);
-    return feedback[i]->actual_position;
-}
-int servo_continue(int i)
-{
-    commend[i]->target_position = feedback[i]->actual_position;
-    commend[i]->control_word = 15;
-    printf("c 15 s %d\n", feedback[i]->status_word);
-    return feedback[i]->actual_position;
-}
-int servo_stop(int i)
-{
-    commend[i]->control_word = 128;
-    printf("c 128 s %d\n", feedback[i]->status_word);
-    return feedback[i]->actual_position;
-}
+int all_enable;
+/**
+ * helper macros
+ */
+//定义了读写检查三个宏
 #define READ(slaveId, idx, sub, buf, comment)                                                                                                                        \
     {                                                                                                                                                                \
         buf = 0;                                                                                                                                                     \
         int __s = sizeof(buf);                                                                                                                                       \
-        int __ret = ec_SDOread(slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);                                                                                 \
+        int __ret = ecx_SDOread(&ecx_context, slaveId, idx, sub, FALSE, &__s, &buf, EC_TIMEOUTRXM);                                                                  \
         printf("Slave: %d - Read at 0x%04x:%d => wkc: %d; data: 0x%.*x (%d)\t[%s]\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, (unsigned int)buf, comment); \
     }
 
-#define WRITE(slaveId, idx, sub, buf, value, comment)                                                                                         \
+#define WRITE(slaveId, idx, sub, buf, feedbackue, comment)                                                                                    \
     {                                                                                                                                         \
         int __s = sizeof(buf);                                                                                                                \
-        buf = value;                                                                                                                          \
-        int __ret = ec_SDOwrite(slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);                                                          \
+        buf = feedbackue;                                                                                                                     \
+        int __ret = ecx_SDOwrite(&ecx_context, slaveId, idx, sub, FALSE, __s, &buf, EC_TIMEOUTRXM);                                           \
         printf("Slave: %d - Write at 0x%04x:%d => wkc: %d; data: 0x%.*x\t{%s}\n", slaveId, idx, sub, __ret, __s, (unsigned int)buf, comment); \
     }
 
-#define CHECKERROR(slaveId)                                                                                                                                                                       \
-    {                                                                                                                                                                                             \
-        ecx_readstate(&ecx_context);                                                                                                                                                              \
-        printf("EC> \"%s\" %x - %x [%s] \n", (char *)ec_elist2string(), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char *)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode)); \
+#define CHECKERROR(slaveId)                                                                                                                                                                                    \
+    {                                                                                                                                                                                                          \
+        ecx_readstate(&ecx_context);                                                                                                                                                                           \
+        printf("EC> \"%s\" %x - %x [%s] \n", (char *)ecx_elist2string(&ecx_context), ec_slave[slaveId].state, ec_slave[slaveId].ALstatuscode, (char *)ec_ALstatuscode2string(ec_slave[slaveId].ALstatuscode)); \
     }
 
-static int slave_dc_config(uint16 slave)
+void simpletest(char *ifname)
 {
-    //  ec_dcsync0(slave,   active,           cycletime,  calc and copy time)
-    ec_dcsync0(slave, dcsync_enable, 4000000U, 1220000U);
-    printf("ec_dcsync0 called on slave %u\n", slave);
-    return 0;
-}
+    int i, oloop, iloop, chk;
+    needlf = FALSE;
+    inOP = FALSE;
 
-void redtest(char *ifname)
-{
-    int cnt, i, oloop, iloop;
-    int init_position[SERVO_NUMBER] = {0};
-    init_position[0] += 0;
+    uint32 buf32;
+    uint16 buf16;
+    uint8 buf8;
+    // struct PositionOut *command2;
 
-    printf("Starting DC-sync test\n");
+    printf("Starting simple test\n");
 
+    //初始化SOEM，绑定网口
     /* initialise SOEM, bind socket to ifname */
-    if (ec_init(ifname))
+    if (ecx_init(&ecx_context, ifname))
     {
         printf("ec_init on %s succeeded.\n", ifname);
         /* find and auto-config slaves */
-        if (ec_config_init(FALSE) > 0) // == ec_config_init + ec_config_map
+
+        //发现并配置从站
+        /** network discovery */
+        if (ecx_config_init(&ecx_context, FALSE) > 0)
         {
             printf("%d slaves found and configured.\n", ec_slavecount);
 
-            // PO2SOconfig is for registering a hook function that will be called when the slave does the transition
-            // between Pre-OP and Safe-OP.
-            if ((ec_slavecount >= 1))
+            for (int i = 1; i <= ec_slavecount; i++)
             {
-                for (cnt = 1; cnt <= ec_slavecount; cnt++)
-                {
-                    printf("Found %s at position %d\n", ec_slave[cnt].name, cnt);
-                    ec_slave[cnt].PO2SOconfig = &slave_dc_config;
-                }
+                printf("Slave %d has CA? %s\n", i, ec_slave[i].CoEdetails & ECT_COEDET_SDOCA ? "true" : "false");
+
+                /** CompleteAccess disabled for Elmo driver */
+                ec_slave[i].CoEdetails ^= ECT_COEDET_SDOCA;
             }
 
-            /* Locate DC slaves, measure propagation delays. */
-            ec_configdc();
+            ecx_statecheck(&ecx_context, 0, EC_STATE_PRE_OP, EC_TIMEOUTSTATE);
 
-            ec_config_map(&IOmap);
+            //设置控制器运行模式等参数
+            /** set PDO mapping */
+            /** opMode: 8  => Position profile */
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                if (MODE == 1)
+                {
+                    WRITE(i, 0x6060, 0, buf8, 9, "OpMode");
+                }
+                else
+                {
+                    WRITE(i, 0x6060, 0, buf8, 8, "OpMode");
+                }
+                READ(i, 0x6061, 0, buf8, "OpMode display");
+
+                READ(i, 0x1c12, 0, buf32, "rxPDO:0");
+                READ(i, 0x1c13, 0, buf32, "txPDO:0");
+
+                READ(i, 0x1c12, 1, buf32, "rxPDO:1");
+                READ(i, 0x1c13, 1, buf32, "txPDO:1");
+            }
+
+            int32 ob2;
+            int os;
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                os = sizeof(ob2);
+                if (MODE == 1)
+                {
+                    ob2 = 0x16010001;
+                }
+                else
+                {
+                    ob2 = 0x16000001;
+                }
+                ecx_SDOwrite(&ecx_context, i, 0x1c12, 0, TRUE, os, &ob2, EC_TIMEOUTRXM);
+                os = sizeof(ob2);
+                ob2 = 0x1a000001;
+                ecx_SDOwrite(&ecx_context, i, 0x1c13, 0, TRUE, os, &ob2, EC_TIMEOUTRXM);
+
+                READ(i, 0x1c12, 0, buf32, "rxPDO:0");
+                READ(i, 0x1c13, 0, buf32, "txPDO:0");
+
+                READ(i, 0x1c12, 1, buf32, "rxPDO:1");
+                READ(i, 0x1c13, 1, buf32, "txPDO:1");
+            }
+
+            //输入输出物理映射，group=0代表所有
+            /** if CA disable => automapping works */
+            ecx_config_map_group(&ecx_context, &IOmap, 0);
+
+            key_t key = ftok("/dev/shm/myshm344", 0);
+            int shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
+            tran = (Transfer *)shmat(shm_id, NULL, 0);
+
+            //定义输入输出指针
+            PositionOut *command[ec_slavecount];
+            VelocityOut *command_v[ec_slavecount];
+            PositionIn *feedback[ec_slavecount];
+            int cache[ec_slavecount];
+            int init_position[ec_slavecount];
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                /* cyclic loop for two slaves*/
+                os = sizeof(ob2);
+                feedback[i - 1] = (PositionIn *)(ec_slave[i].inputs);
+                READ(i, 0x6064, 0, buf32, "rxPDO:0");
+                if (MODE == 1)
+                {
+                    command_v[i - 1] = (VelocityOut *)(ec_slave[i].outputs);
+                    command_v[i - 1]->velocity = 0;
+                    init_position[i - 1] = buf32;
+                }
+                else
+                {
+                    command[i - 1] = (PositionOut *)(ec_slave[i].outputs);
+                    init_position[i - 1] = command[i - 1]->position = buf32;
+                }
+                cache[i - 1] = tran[i - 1].position_command = tran[i - 1].positon_feedback = buf32;
+                // printf("test: %d %d %d %d\n", init_position[i - 1], command[i - 1]->position, tran[i - 1].position_command, tran[i - 1].positon_feedback);
+                if (MODE == 0)
+                {
+                    PID_init(init_position[i - 1], i - 1,0);
+                }
+                else if (MODE == 1)
+                {
+                    PID_init(init_position[i - 1], i - 1,1);
+                }
+                else if (MODE == 2)
+                {
+                    inter_init(init_position[i - 1], i - 1);
+                }
+                // usleep(100000);
+            }
+
+            // show slave info
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                printf("\nSlave:%d\n Name:%s\n Output size: %dbits\n Input size: %dbits\n State: %d\n Delay: %d[ns]\n Has DC: %d\n",
+                       i, ec_slave[i].name, ec_slave[i].Obits, ec_slave[i].Ibits,
+                       ec_slave[i].state, ec_slave[i].pdelay, ec_slave[i].hasdc);
+            }
+
+            /** disable heartbeat alarm */
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                READ(i, 0x10F1, 2, buf32, "Heartbeat?");
+                WRITE(i, 0x10F1, 2, buf32, 1, "Heartbeat");
+
+                WRITE(i, 0x60c2, 1, buf8, 2, "Time period");
+                WRITE(i, 0x2f75, 0, buf16, 2, "Interpolation timeout");
+            }
+
+            printf("Slaves mapped, state to SAFE_OP.\n");
 
             /* wait for all slaves to reach SAFE_OP state */
-            ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE);
+            ecx_statecheck(&ecx_context, 0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE * 4);
 
-            /* read indevidual slave state and store in ec_slave[] */
-            ec_readstate();
-            for (cnt = 1; cnt <= ec_slavecount; cnt++)
-            {
-                /* BEGIN USER CODE */
-
-                printf("Slave:%d Name:%s Output size:%3dbits Input size:%3dbits State:%2d delay:%d.%d\n",
-                       cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
-                       ec_slave[cnt].state, (int)ec_slave[cnt].pdelay, ec_slave[cnt].hasdc);
-
-                /* END USER CODE */
-            }
-            expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
-            printf("Calculated workcounter %d\n", expectedWKC);
-
-            printf("Request operational state for all slaves\n");
-            ec_slave[0].state = EC_STATE_OPERATIONAL;
-            /* request OP state for all slaves */
-            ec_writestate(0);
-            /* activate cyclic process data */
-            dorun = 1;
-            /* wait for all slaves to reach OP state */
-            ec_statecheck(0, EC_STATE_OPERATIONAL, 5 * EC_TIMEOUTSTATE);
+            /** old SOEM code, inactive */
             oloop = ec_slave[0].Obytes;
             if ((oloop == 0) && (ec_slave[0].Obits > 0))
                 oloop = 1;
-            if (oloop > 8)
+            if (oloop > 20)
                 oloop = 8;
             iloop = ec_slave[0].Ibytes;
             if ((iloop == 0) && (ec_slave[0].Ibits > 0))
                 iloop = 1;
-            if (iloop > 8)
+            if (iloop > 20)
                 iloop = 8;
+
+            printf("segments : %d : %d %d %d %d\n", ec_group[0].nsegments, ec_group[0].IOsegment[0], ec_group[0].IOsegment[1], ec_group[0].IOsegment[2], ec_group[0].IOsegment[3]);
+
+            printf("Request operational state for all slaves\n");
+            expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
+            printf("Calculated workcounter %d\n", expectedWKC);
+
+            /** going operational */
+            ec_slave[0].state = EC_STATE_OPERATIONAL;
+            /* send one feedbackid process data to make outputs in slaves happy*/
+            ecx_send_processdata(&ecx_context);
+            ecx_receive_processdata(&ecx_context, EC_TIMEOUTRET);
+
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                READ(i, 0x6083, 0, buf32, "Profile acceleration");
+                READ(i, 0x6084, 0, buf32, "Profile deceleration");
+                READ(i, 0x6085, 0, buf32, "Quick stop deceleration");
+            }
+
+            /* request OP state for all slaves */
+            ecx_writestate(&ecx_context, 0);
+            chk = 40;
+            /* wait for all slaves to reach OP state */
+            do
+            {
+                ecx_send_processdata(&ecx_context);
+                ecx_receive_processdata(&ecx_context, EC_TIMEOUTRET);
+                ecx_statecheck(&ecx_context, 0, EC_STATE_OPERATIONAL, 50000);
+                // for (int i = 1; i <= ec_slavecount; i++)
+                // {
+                //     command[i - 1]->position = feedback[i - 1]->position;
+                // }
+            } while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+
             if (ec_slave[0].state == EC_STATE_OPERATIONAL)
             {
                 printf("Operational state reached for all slaves.\n");
+                // wkc_count = 0;
                 inOP = TRUE;
-                /* acyclic loop 5000 x 20ms = 10s */
 
-                key = ftok("/dev/shm/myshm344", 0);
-                shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
-                tran = (Transfer *)shmat(shm_id, NULL, 0);
+                /**
+                 * Drive state machine transistions
+                 *   0 -> 6 -> 7 -> 15
+                 */
 
-                for (int i = 0; i < SERVO_NUMBER; i++)
+                for (int i = 1; i <= ec_slavecount; i++)
                 {
-                    commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
-                    feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
-                    tran[i].control_word = enable[i];
-                    if (enable[i] == 1)
+                    READ(i, 0x6041, 0, buf16, "*status word*");
+                    if (buf16 == 0x218)
                     {
-
-                        init_position[i] = servo_init(i);
-                        tran[i].position_command = inc2rad(init_position[i], i);
-                        tran[i].positon_feedback = inc2rad(init_position[i], i);
-
-                        inter_init(inc2rad(init_position[i], i), i);
-                        // double outputx[1000000];
-                        // int num;
-                        // num = data_process(outputx, rad2inc(0, i), init_position[i], 200, 10, 0.1);
-                        // for (int j = 0; j < num; ++j)
-                        // {
-                        //    commend[i]->target_position = (int)outputx[j];
-                        //    osal_usleep(50);
-                        // }
-                        // osal_usleep(1000000);
-
-                        //commend[i]->op_mode = 8;
-                        enable[i] = 2;
+                        WRITE(i, 0x6040, 0, buf16, 128, "*control word*");
+                        usleep(100000);
+                        READ(i, 0x6041, 0, buf16, "*status word*");
                     }
+
+                    WRITE(i, 0x6040, 0, buf16, 0, "*control word*");
+                    usleep(100000);
+                    READ(i, 0x6041, 0, buf16, "*status word*");
+
+                    WRITE(i, 0x6040, 0, buf16, 6, "*control word*");
+                    usleep(100000);
+                    READ(i, 0x6041, 0, buf16, "*status word*");
+
+                    WRITE(i, 0x6040, 0, buf16, 7, "*control word*");
+                    usleep(100000);
+                    READ(i, 0x6041, 0, buf16, "*status word*");
+
+                    WRITE(i, 0x6040, 0, buf16, 15, "*control word*");
+                    usleep(100000);
+                    READ(i, 0x6041, 0, buf16, "*status word*");
+
+                    CHECKERROR(i);
+                    READ(i, 0x1a0b, 0, buf8, "OpMode Display");
+
+                    READ(i, 0x1001, 0, buf8, "Error");
                 }
-
-                all_enable = 1;
-                printf("all to ready\n");
-
-                //double load_data[18];
-                //double outputx[1000000];
-                //int num;
-                // for (int k = 0; k < SERVO_NUMBER; ++k)
-                // {
-                //   printf("%d to zero\n", k);
-                //   num=data_process(outputx,rad2inc(0,k+1),init_position[k],200,10,0.1);
-                //   for (int i = 0; i < num; ++i)
-                //   {
-                //     commend[k]->target_position=(int)outputx[i];
-                //     osal_usleep(50);
-                //   }
-                // }
-                // num = data_process(outputx, rad2inc(0, 0), init_position[0], 200, 10, 0.1);
-                // for (int i = 0; i < num; ++i)
-                // {
-                //    commend[0]->target_position = (int)outputx[i];
-                //    osal_usleep(50);
-                // }
-                // osal_usleep(1000000);
-                // enable[0] = 1;
+                int reachedInitial = 0;
+                double speed, c;
+                int timestep = 400;
                 while (1)
                 {
-                    for (int i = 0; i < SERVO_NUMBER; i++)
+                    for (int i = 1; i <= ec_slavecount; i++)
                     {
-                        if (tran[i].control_word == 0 && enable[i] != 0)
+                        ecx_send_processdata(&ecx_context);
+                        wkc = ecx_receive_processdata(&ecx_context, EC_TIMEOUTRET);
+
+                        if (wkc >= expectedWKC)
                         {
-                            printf("stop%d", i);
-                            servo_pause(i);
-                            enable[i] = 0;
+                            if (MODE == 1)
+                            {
+                                switch (command_v[i - 1]->status)
+                                {
+                                case 0:
+                                    command_v[i - 1]->status = 6;
+                                    break;
+                                case 6:
+                                    command_v[i - 1]->status = 7;
+                                    break;
+                                case 7:
+                                    command_v[i - 1]->status = 15;
+                                    break;
+                                case 128:
+                                    command_v[i - 1]->status = 0;
+                                    break;
+                                default:
+                                    if (feedback[i - 1]->status >> 3 & 0x01)
+                                    {
+                                        READ(1, 0x1001, 0, buf8, "Error");
+                                        command_v[i - 1]->status = 128;
+                                        reachedInitial = 0;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                switch (command[i - 1]->status)
+                                {
+                                case 0:
+                                    command[i - 1]->status = 6;
+                                    break;
+                                case 6:
+                                    command[i - 1]->status = 7;
+                                    break;
+                                case 7:
+                                    command[i - 1]->status = 15;
+                                    break;
+                                case 128:
+                                    command[i - 1]->status = 0;
+                                    break;
+                                default:
+                                    if (feedback[i - 1]->status >> 3 & 0x01)
+                                    {
+                                        READ(1, 0x1001, 0, buf8, "Error");
+                                        command[i - 1]->status = 128;
+                                        reachedInitial = 0;
+                                    }
+                                }
+                            }
+                            /** we wait to be in ready-to-run mode and with initial feedbackue reached */
+                            if (reachedInitial == 0 && (feedback[i - 1]->status & 0x0fff) == 0x0237)
+                            {
+                                reachedInitial = 1;
+                            }
+
+                            if ((feedback[i - 1]->status & 0x0fff) == 0x0237 && reachedInitial)
+                            {
+                                tran[i - 1].positon_feedback = feedback[i - 1]->position;
+                                if (tran[i - 1].position_command < max[i - 1] && tran[i - 1].position_command > min[i - 1])
+                                {
+                                    cache[i - 1] = c = tran[i - 1].position_command;
+                                }
+                                else
+                                {
+                                    tran[i - 1].position_command = c = cache[i - 1];
+                                }
+                                if (MODE == 0)
+                                {
+                                    speed = PID_realize(c, feedback[i - 1]->position, i - 1, 0);
+                                    command[i - 1]->position = (int)speed;
+                                }
+                                else if (MODE == 1)
+                                {
+                                    speed = PID_realize(c, feedback[i - 1]->position, i - 1, 1);
+                                    command_v[i - 1]->velocity = (int)speed;
+                                }
+                                else if (MODE == 2)
+                                {
+                                    speed = inter_realize(c, step_num, i - 1);
+                                    command[i - 1]->position = (int)speed;
+                                }
+                                printf("index: %d feed: %d targrt: %d motion: %d\n", i, feedback[i - 1]->position, (int)c, (int)speed);
+                            }
+                            needlf = TRUE;
                         }
-                        if (tran[i].control_word == 1 && enable[i] == 0)
-                        {
-                            printf("enable%d", i);
-                            init_position[i] = servo_init(i);
-                            tran[i].position_command = inc2rad(init_position[i], i);
-                            tran[i].positon_feedback = inc2rad(init_position[i], i);
-                            inter_init(inc2rad(init_position[i], i), i);
-                            //commend[i]->op_mode = 8;
-                            enable[i] = 2;
-                        }
+                        usleep(timestep);
                     }
+                    // printf("\n");
                 }
-
-                // for(i = 1; i <= 5000; i++)
-                // {
-                //     /* BEGIN USER CODE */
-
-                //    printf("Processdata cycle %5d , Wck %3d, DCtime %12ld, dt %12ld, O:",
-                //       dorun, wkc , ec_DCtime, gl_delta);
-                //    for(j = 0 ; j < oloop; j++)
-                //    {
-                //       printf(" %2.2x", *(ec_slave[0].outputs + j));
-                //    }
-                //    printf(" I:");
-                //    for(j = 0 ; j < iloop; j++)
-                //    {
-                //       printf(" %2.2x", *(ec_slave[0].inputs + j));
-                //    }
-                //    printf("\r");
-                //    fflush(stdout);
-                //    osal_usleep(20000);
-
-                //    /* END USER CODE */
-
-                // }
-                dorun = 0;
                 inOP = FALSE;
             }
             else
             {
                 printf("Not all slaves reached operational state.\n");
-                ec_readstate();
+                ecx_readstate(&ecx_context);
                 for (i = 1; i <= ec_slavecount; i++)
                 {
                     if (ec_slave[i].state != EC_STATE_OPERATIONAL)
@@ -354,18 +433,24 @@ void redtest(char *ifname)
                     }
                 }
             }
-            printf("Request safe operational state for all slaves\n");
-            ec_slave[0].state = EC_STATE_SAFE_OP;
-            /* request SAFE_OP state for all slaves */
-            ec_writestate(0);
+
+            printf("\nRequest init state for all slaves\n");
+            for (int i = 1; i <= ec_slavecount; i++)
+            {
+                WRITE(i, 0x10F1, 2, buf32, 0, "Heartbeat");
+            }
+
+            ec_slave[0].state = EC_STATE_INIT;
+            /* request INIT state for all slaves */
+            ecx_writestate(&ecx_context, 0);
         }
         else
         {
             printf("No slaves found!\n");
         }
-        printf("End DC-sync test, close socket\n");
+        printf("End simple test, close socket\n");
         /* stop SOEM, close socket */
-        ec_close();
+        ecx_close(&ecx_context);
     }
     else
     {
@@ -373,115 +458,7 @@ void redtest(char *ifname)
     }
 }
 
-/* add ns to timespec */
-void add_timespec(struct timespec *ts, int64 addtime)
-{
-    int64 sec, nsec;
-
-    nsec = addtime % NSEC_PER_SEC;
-    sec = (addtime - nsec) / NSEC_PER_SEC;
-    ts->tv_sec += sec;
-    ts->tv_nsec += nsec;
-    if (ts->tv_nsec > NSEC_PER_SEC)
-    {
-        nsec = ts->tv_nsec % NSEC_PER_SEC;
-        ts->tv_sec += (ts->tv_nsec - nsec) / NSEC_PER_SEC;
-        ts->tv_nsec = nsec;
-    }
-}
-
-/* PI calculation to get linux time synced to DC time */
-void ec_sync(int64 reftime, int64 cycletime, int64 *offsettime)
-{
-    static int64 integral = 0;
-    int64 delta;
-    /* set linux sync point 50us later than DC sync, just as example */
-    delta = (reftime - 50000) % cycletime;
-    if (delta > (cycletime / 2))
-    {
-        delta = delta - cycletime;
-    }
-    if (delta > 0)
-    {
-        integral++;
-    }
-    if (delta < 0)
-    {
-        integral--;
-    }
-    *offsettime = -(delta / 100) - (integral / 20);
-    gl_delta = delta;
-}
-
-/* RT EtherCAT thread */
-OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
-{
-    struct timespec ts, tleft;
-    int ht;
-    int64 cycletime;
-
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    ht = (ts.tv_nsec / 1000000) + 1; /* round to nearest ms */
-    ts.tv_nsec = ht * 1000000;
-    cycletime = *(int *)ptr * 1000; /* cycletime in ns */
-    toff = 0;
-    dorun = 0;
-    int count = 0;
-    double speed, c;
-    //double v = 0.1 / 2;
-    ec_send_processdata();
-    while (1)
-    {
-        /* calculate next cycle start */
-        add_timespec(&ts, cycletime + toff);
-        /* wait to cycle start */
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, &tleft);
-        if (dorun > 0)
-        {
-            /* BEGIN USER CODE */
-            wkc = ec_receive_processdata(EC_TIMEOUTRET);
-            for (size_t i = 0; i < SERVO_NUMBER; i++)
-            {
-                if (all_enable == 1 && enable[i] == 2)
-                {
-                    //inter[i].x = inc2rad(feedback[i]->actual_position, i);
-                    tran[i].positon_feedback = inc2rad(feedback[i]->actual_position, i);
-                    // p = pid[i].ActualSpeed;
-                    c = tran[i].position_command;
-                    // if ((c - p) >= v)
-                    // {
-                    //     c = p + v;
-                    // }
-                    // else if ((p - c) >= v)
-                    // {
-                    //     c = p - v;
-                    // }
-                    speed = inter_realize(c, 150, i);
-
-                    //    speed = PID_realize(c, i);
-
-                    commend[i]->target_position = rad2inc(speed, i);
-                    //commend[i]->target_velocity = 100 * (long int)(speed * 180 / 3.1415926 * incpdeg[i]);
-                    //commend[i]->target_torque = -speed*10000;
-                    count++;
-                    printf("%ld %lf %lf %lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed);
-                }
-            }
-            if (all_enable==1)printf("\n");
-
-            dorun = 1;
-            if (ec_slave[0].hasdc)
-            {
-                /* calulate toff to get linux time and DC synced */
-                ec_sync(ec_DCtime, cycletime, &toff);
-            }
-            ec_send_processdata();
-            /* END USER CODE */
-        }
-    }
-}
-
-OSAL_THREAD_FUNC ecatcheck()
+void *ecatcheck()
 {
     int slave;
 
@@ -496,7 +473,7 @@ OSAL_THREAD_FUNC ecatcheck()
             }
             /* one ore more slaves are not responding */
             ec_group[currentgroup].docheckstate = FALSE;
-            ec_readstate();
+            ecx_readstate(&ecx_context);
             for (slave = 1; slave <= ec_slavecount; slave++)
             {
                 if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
@@ -506,17 +483,17 @@ OSAL_THREAD_FUNC ecatcheck()
                     {
                         printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
                         ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
-                        ec_writestate(slave);
+                        ecx_writestate(&ecx_context, slave);
                     }
                     else if (ec_slave[slave].state == EC_STATE_SAFE_OP)
                     {
                         printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
                         ec_slave[slave].state = EC_STATE_OPERATIONAL;
-                        ec_writestate(slave);
+                        ecx_writestate(&ecx_context, slave);
                     }
-                    else if (ec_slave[slave].state > EC_STATE_NONE)
+                    else if (ec_slave[slave].state > 0)
                     {
-                        if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
+                        if (ecx_reconfig_slave(&ecx_context, slave, EC_TIMEOUTMON))
                         {
                             ec_slave[slave].islost = FALSE;
                             printf("MESSAGE : slave %d reconfigured\n", slave);
@@ -525,8 +502,8 @@ OSAL_THREAD_FUNC ecatcheck()
                     else if (!ec_slave[slave].islost)
                     {
                         /* re-check state */
-                        ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
-                        if (ec_slave[slave].state == EC_STATE_NONE)
+                        ecx_statecheck(&ecx_context, slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
+                        if (!ec_slave[slave].state)
                         {
                             ec_slave[slave].islost = TRUE;
                             printf("ERROR : slave %d lost\n", slave);
@@ -535,9 +512,9 @@ OSAL_THREAD_FUNC ecatcheck()
                 }
                 if (ec_slave[slave].islost)
                 {
-                    if (ec_slave[slave].state == EC_STATE_NONE)
+                    if (!ec_slave[slave].state)
                     {
-                        if (ec_recover_slave(slave, EC_TIMEOUTMON))
+                        if (ecx_recover_slave(&ecx_context, slave, EC_TIMEOUTMON))
                         {
                             ec_slave[slave].islost = FALSE;
                             printf("MESSAGE : slave %d recovered\n", slave);
@@ -551,40 +528,29 @@ OSAL_THREAD_FUNC ecatcheck()
                 }
             }
             if (!ec_group[currentgroup].docheckstate)
-                printf("OK : all slaves resumed OPERATIONAL.\n");
+                printf(".");
         }
-        osal_usleep(10000);
+        usleep(250);
     }
 }
 
-#define stack64k (64 * 1024)
-
 int main(int argc, char *argv[])
 {
-    int ctime;
+    // int iret1;
+    printf("SOEM (Simple Open EtherCAT Master)\nSimple test\n");
 
-    printf("SOEM (Simple Open EtherCAT Master)\nDC-sync test\n");
-
-    if (argc > 2)
+    if (argc > 1)
     {
-        dorun = 0;
-        ctime = atoi(argv[2]);
-
-        /* create RT thread */
-        osal_thread_create_rt(&thread1, stack64k * 2, &ecatthread, (void *)&ctime);
-
         /* create thread to handle slave error handling in OP */
-        osal_thread_create(&thread2, stack64k * 4, &ecatcheck, NULL);
-
-        /* start acyclic part */
-        redtest(argv[1]);
+        pthread_create(&thread1, NULL, &ecatcheck, (void(*)) & ctime); // (void) &ctime
+        /* start cyclic part */
+        simpletest(argv[1]);
     }
     else
     {
-        printf("Usage: dcsync_test ifname cycletime\nifname = eth0 for example\ncycletime in us\n");
+        printf("Usage: simple_test ifname1\nifname = eth0 for example\n");
     }
 
     printf("End program\n");
-
     return (0);
 }

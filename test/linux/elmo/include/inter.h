@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "./config.h"
 struct inter
 {
     double x, v, a;
@@ -19,7 +20,7 @@ struct inter
     double step;
     int num, current;
     double a0, a1, a2, a3, a4, a5;
-} inter[18];
+} inter[7];
 
 void inter_init(double init_x, int i)
 {
@@ -31,7 +32,7 @@ void inter_init(double init_x, int i)
     inter[i].xf = init_x;
     inter[i].vf = 0.0;
     inter[i].af = 0.0;
-    inter[i].step = 0.004;
+    inter[i].step = step;
     inter[i].num = 0;
     //inter[i].current = 0;
     inter[i].a0 = 0.0;
@@ -46,7 +47,7 @@ void inter_init(double init_x, int i)
 
 double inter_realize(double target, int num, int i)
 {
-    if (target - inter[i].x < 0.0001 && target - inter[i].x > -0.0001)
+    if (abs(target - inter[i].x) < min_err)
     {
         inter[i].x = target;
         inter[i].v = 0;
