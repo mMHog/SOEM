@@ -15,7 +15,7 @@ double Kp_v[] = {2, 2, 2, 2, 2, 2, 2};
 double Ki_v[] = {0, 0, 0, 0, 0, 0, 0};
 double Kd_v[] = {2, 2, 2, 2, 2, 2, 2};
 
-double max_err=3000;
+double max_err=5000;
 double min_err_i = 200;
 double min_err = 50;
 
