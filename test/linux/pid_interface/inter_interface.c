@@ -33,10 +33,12 @@
 #define WELD (1<<4)
 #define DRIVE (1<<6)
 #define RETRO (1<<5)
+#define CHECKGAS (1<<7)
 
 #define V 54.61333
 #define A 5.46133
 
+FILE *fp;
 struct sched_param schedp;
 char IOmap[4096];
 pthread_t thread1, thread2;
@@ -53,11 +55,12 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-//  int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1};
-int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
+//  int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1};
+// int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
+int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 // int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
-int w_enable;
+int w_enable=0;
 uint8 currentgroup = 0;
 
 key_t key;
@@ -126,11 +129,14 @@ int servo_init(int i)
 {
     commend[i]->target_velocity = 0;
     commend[i]->target_torque = 0;
-    commend[i]->op_mode = 8;
+    commend[i]->op_mode = 8;    // CSP
 
     commend[i]->control_word = 128;
     osal_usleep(100000);
     printf("c 128 s %d\n", feedback[i]->status_word);
+    commend[i]->control_word = 0;
+    osal_usleep(100000);
+    printf("c 0 s %d\n", feedback[i]->status_word);
     commend[i]->control_word = 6;
     osal_usleep(100000);
     printf("c 6 s %d\n", feedback[i]->status_word);
@@ -144,7 +150,7 @@ int servo_init(int i)
     if (feedback[i]->status_word != 34615 && feedback[i]->status_word != 49975)
     {
         printf("Fail to enable joint %d\n", i + 1);
-        exit(0);
+        //exit(0);
     }
 
     osal_usleep(100000);
@@ -309,7 +315,6 @@ void redtest(char *ifname)
 
                 wcommend[0] = (WRPdo *)(ec_slave[SERVO_NUMBER + 1].outputs);
                 wfeedback[0] = (WTPdo *)(ec_slave[SERVO_NUMBER + 1].inputs);
-                
 
                 wtran->command=wcommend[0]->dout=0;
                 wtran->feedback=wfeedback[0]->din=0;
@@ -507,22 +512,23 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                     // {
                     //     c = p - v;
                     // }
-                    speed = inter_realize(c, 150, i);
+                    speed = inter_realize(c, 1000, i);
 
                     //    speed = PID_realize(c, i);
 
                     commend[i]->target_position = rad2inc(speed, i);
                     //commend[i]->target_velocity = 100 * (long int)(speed * 180 / 3.1415926 * incpdeg[i]);
                     //commend[i]->target_torque = -speed*10000;
-                    count++;
-                    printf("%ld %lf %lf %lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed);
+                    printf("%ld\t%lf\t%lf\t%lf\t%d\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed,feedback[i]->actual_position);
+                    fprintf(fp,"%d,%ld,%d,%d,%d,%ld,%ld,%ld,%ld\n",count,i+1,feedback[i]->actual_position,
+                    feedback[i]->actual_velocity,feedback[i]->actual_torque,rad2inc(c, i),rad2inc(inter[i].x, i),rad2inc2(inter[i].v, i),rad2inc2(inter[i].a, i));
                 }
             }
 
 
             if(all_enable == 1 && w_enable==1){
                 wcommend[0]->dout=wtran->command;
-                if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
+                //if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
 
                 wtran->feedback=wfeedback[0]->din;
 
@@ -531,8 +537,16 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
 
                 wtran->Ifeedback=wfeedback[0]->ain1/A;
                 wtran->Ufeedback=wfeedback[0]->ain2/V;
-
-                printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
+                    printf("%d",feedback[0]->actual_position);
+                for (size_t i = 1; i < SERVO_NUMBER; i++){
+                    printf(",%d",feedback[i]->actual_position);
+                }
+                printf("\n ");
+                for (size_t i = 0; i < SERVO_NUMBER; i++){
+                    printf("%d ",tran[i].control_word);
+                }
+                printf("\n ");
+                printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Gas:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, (wcommend[0]->dout&(1<<7))>>7, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
             }
             if (all_enable==1)printf("\n");
 
@@ -545,6 +559,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
             ec_send_processdata();
             /* END USER CODE */
         }
+        count++;
     }
 }
 
@@ -634,6 +649,14 @@ int main(int argc, char *argv[])
 
     if (argc > 2)
     {
+        time_t rawtime;
+        time(&rawtime);
+        char str[128];
+        struct tm *tinfo=localtime(&rawtime);
+        strftime(str,sizeof(str),"/home/multi-arm/SOEM/log/bb-%Y-%m-%d-%H:%M:%S.log",tinfo);
+        // int iret1;
+        fp=fopen(str, "a");
+        fprintf(fp,"cycle,index,pos_feedback,vel_feedback,tor_feedback,pos_command,inter_x,inter_v,inter_a\n");
         dorun = 0;
         ctime = atoi(argv[2]);
 
@@ -651,6 +674,7 @@ int main(int argc, char *argv[])
         printf("Usage: dcsync_test ifname cycletime\nifname = eth0 for example\ncycletime in us\n");
     }
 
+    fclose(fp);
     printf("End program\n");
 
     return (0);

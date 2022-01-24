@@ -23,7 +23,7 @@ struct _pid
 	double integral;	//定义积分值
 	double umax;
 	double umin;
-} pid[7];
+} pid[slave_num];
 
 void PID_init(double init_x, int i, int mode)
 {

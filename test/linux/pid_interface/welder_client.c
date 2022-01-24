@@ -52,7 +52,7 @@ typedef struct
 } WTransfer;
 int main()
 {
-    key_t key = ftok("/dev/shm/myshm344", 0);
+    key_t key = ftok("/dev/shm/myshm345", 0);
     int shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
     //double *p = (double *)shmat(shm_id, NULL, 0);
     // double p;
@@ -60,7 +60,8 @@ int main()
 
     // Transfer *tran = (Transfer *)shmat(shm_id, NULL, 0);
     // WTransfer *wtran=(WTransfer *)(tran+SERVO_NUMBER);
-    WTransfer *wtran=(WTransfer *)shmat(shm_id, NULL, 0);;
+    Transfer *tran = (Transfer *)shmat(shm_id, NULL, 0);
+    WTransfer *wtran=(WTransfer *)(tran+SERVO_NUMBER);
 
     // wtran->Icommand=50;
     // wtran->Ucommand=10;

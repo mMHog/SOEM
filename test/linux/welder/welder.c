@@ -254,7 +254,7 @@ void redtest(char *ifname)
                 inOP = TRUE;
                 /* acyclic loop 5000 x 20ms = 10s */
 
-                key = ftok("/dev/shm/myshm344", 0);
+                key = ftok("/dev/shm/myshm345", 0);
                 shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
                 wtran = (WTransfer *)shmat(shm_id, NULL, 0);
                 // for (int i = 0; i < SERVO_NUMBER; i++)
@@ -506,7 +506,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
             // if (all_enable==1)printf("\n");
             if(all_enable == 1 && w_enable==1){
                 wcommend[0]->dout=wtran->command;
-                if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
+                //if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
 
                 wtran->feedback=wfeedback[0]->din;
 
@@ -516,7 +516,8 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                 wtran->Ifeedback=wfeedback[0]->ain1/A;
                 wtran->Ufeedback=wfeedback[0]->ain2/V;
 
-                printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
+                //printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
+printf("Command:%d Feedback:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", wcommend[0]->dout, wfeedback[0]->din, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
             }
             count++;
             dorun = 1;

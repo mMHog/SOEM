@@ -11,6 +11,7 @@
 
 #include<stdio.h>
 #include<stdlib.h>
+#include<math.h>
 struct _pid{
 	double SetSpeed; //定义设定值
 	double ActualSpeed; //定义实际值
@@ -45,7 +46,7 @@ double PID_realize(double speed,int i){
 	pid[i].err=pid[i].SetSpeed-pid[i].ActualSpeed;
 	if(pid[i].ActualSpeed>pid[i].umax) //灰色底色表示抗积分饱和的实现
 	{
-		if(abs(pid[i].err)>200) //蓝色标注为积分分离过程
+		if(fabs(pid[i].err)>200) //蓝色标注为积分分离过程
 		{
 		index=0;
 		}else{
@@ -56,7 +57,7 @@ double PID_realize(double speed,int i){
 			}
 		}
 	}else if(pid[i].ActualSpeed<pid[i].umin){
-		if(abs(pid[i].err)>200) //积分分离过程
+		if(fabs(pid[i].err)>200) //积分分离过程
 		{
 			index=0;
 		}else{
@@ -67,7 +68,7 @@ double PID_realize(double speed,int i){
 			}
 		}
 	}else{
-			if(abs(pid[i].err)>200) //积分分离过程
+			if(fabs(pid[i].err)>200) //积分分离过程
 			{
 				index=0;
 			}else{
