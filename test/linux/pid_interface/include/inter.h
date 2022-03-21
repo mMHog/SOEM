@@ -23,7 +23,7 @@ struct inter
 
 void inter_init(double init_x, int i)
 {
-    printf("inter_init begin \n");
+    //printf("inter_init begin \n");
 
     inter[i].x = init_x;
     inter[i].v = 0.0;
@@ -41,7 +41,7 @@ void inter_init(double init_x, int i)
     inter[i].a4 = 0.0;
     inter[i].a5 = 0.0;
 
-    printf("inter_init end \n");
+    //printf("inter_init end \n");
 }
 
 double inter_realize(double target, int num, int i)

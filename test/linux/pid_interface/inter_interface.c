@@ -317,6 +317,7 @@ void redtest(char *ifname)
                 wfeedback[0] = (WTPdo *)(ec_slave[SERVO_NUMBER + 1].inputs);
 
                 wtran->command=wcommend[0]->dout=0;
+                //wtran->command=wcommend[0]->dout=16128;
                 wtran->feedback=wfeedback[0]->din=0;
                 wtran->Icommand=wcommend[0]->aout1=0;
                 wtran->Ucommand=wcommend[0]->aout2=0;
@@ -510,9 +511,9 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                     // }
                     // else if ((p - c) >= v)
                     // {
-                    //     c = p - v;
+                    //     c = p - v;s
                     // }
-                    speed = inter_realize(c, 1000, i);
+                    speed = inter_realize(c, 50, i);
 
                     //    speed = PID_realize(c, i);
 
@@ -545,6 +546,8 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                 for (size_t i = 0; i < SERVO_NUMBER; i++){
                     printf("%d ",tran[i].control_word);
                 }
+                printf("\n ");
+                printf("%X",wcommend[0]->dout);
                 printf("\n ");
                 printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Gas:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, (wcommend[0]->dout&(1<<7))>>7, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
             }
@@ -656,7 +659,7 @@ int main(int argc, char *argv[])
         strftime(str,sizeof(str),"/home/multi-arm/SOEM/log/bb-%Y-%m-%d-%H:%M:%S.log",tinfo);
         // int iret1;
         fp=fopen(str, "a");
-        fprintf(fp,"cycle,index,pos_feedback,vel_feedback,tor_feedback,pos_command,inter_x,inter_v,inter_a\n");
+        //fprintf(fp,"cycle,index,pos_feedback,vel_feedback,tor_feedback,pos_command,inter_x,inter_v,inter_a\n");
         dorun = 0;
         ctime = atoi(argv[2]);
 

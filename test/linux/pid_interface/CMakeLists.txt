@@ -31,6 +31,11 @@ add_executable(load_data ${SOURCES})
 target_link_libraries(load_data soem m)
 install(TARGETS load_data DESTINATION bin)
 
+set(SOURCES load_data2.c)
+add_executable(load_data2 ${SOURCES})
+target_link_libraries(load_data2 soem m)
+install(TARGETS load_data2 DESTINATION bin)
+
 set(SOURCES random.c)
 add_executable(random ${SOURCES})
 target_link_libraries(random soem m)
