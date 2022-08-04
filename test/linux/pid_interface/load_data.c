@@ -28,8 +28,9 @@
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
-#define SERVO_NUMBER 18
+#define SERVO_NUMBER 6
 
+FILE *fp;
 struct sched_param schedp;
 char IOmap[4096];
 pthread_t thread1, thread2;
@@ -69,7 +70,8 @@ typedef struct PACKED
 
 double load_data[SERVO_NUMBER];
 int init_position[SERVO_NUMBER];
-int enable[SERVO_NUMBER] = {0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+//int enable[SERVO_NUMBER] = {0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+int enable[SERVO_NUMBER] = {0, 0, 1, 0, 0, 0};
 
 RPdo *commend[SERVO_NUMBER];
 TPdo *feedback[SERVO_NUMBER];
@@ -183,29 +185,32 @@ void redtest(char *ifname)
                 /* acyclic loop 5000 x 20ms = 10s */
                 for (int i = 0; i < SERVO_NUMBER; i++)
                 {
-                    commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
-                    feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
+                    if (enable[i]==1)
+                    {
+                        commend[i] = (RPdo *)(ec_slave[i + 1].outputs);
+                        feedback[i] = (TPdo *)(ec_slave[i + 1].inputs);
 
-                    commend[i]->target_velocity = 0;
-                    commend[i]->target_torque = 0;
-                    commend[i]->op_mode = 8;
+                        commend[i]->target_velocity = 0;
+                        commend[i]->target_torque = 0;
+                        commend[i]->op_mode = 8;
 
-                    commend[i]->control_word = 128;
-                    osal_usleep(100000);
-                    printf("c 128 s %d\n", feedback[i]->status_word);
-                    commend[i]->control_word = 6;
-                    osal_usleep(100000);
-                    printf("c 6 s %d\n", feedback[i]->status_word);
-                    commend[i]->control_word = 7;
-                    osal_usleep(100000);
-                    printf("c 7 s %d\n", feedback[i]->status_word);
+                        commend[i]->control_word = 128;
+                        osal_usleep(100000);
+                        printf("c 128 s %d\n", feedback[i]->status_word);
+                        commend[i]->control_word = 6;
+                        osal_usleep(100000);
+                        printf("c 6 s %d\n", feedback[i]->status_word);
+                        commend[i]->control_word = 7;
+                        osal_usleep(100000);
+                        printf("c 7 s %d\n", feedback[i]->status_word);
 
-                    init_position[i] = feedback[i]->actual_position;
-                    commend[i]->target_position = feedback[i]->actual_position;
-                    commend[i]->control_word = 15;
-                    osal_usleep(100000);
-                    printf("c 15 s %d\n", feedback[i]->status_word);
-                    osal_usleep(100000);
+                        init_position[i] = feedback[i]->actual_position;
+                        commend[i]->target_position = feedback[i]->actual_position;
+                        commend[i]->control_word = 15;
+                        osal_usleep(100000);
+                        printf("c 15 s %d\n", feedback[i]->status_word);
+                        osal_usleep(100000);
+                    }                    
                 }
                 printf("all to ready\n");
 
@@ -342,6 +347,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
     toff = 0;
     dorun = 0;
     ec_send_processdata();
+    int count=0;
     while (1)
     {
         /* calculate next cycle start */
@@ -359,8 +365,11 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                     if(scanf("%lf", &load_data[i])==EOF) exit(0);
                     if (enable[i] != 0)
                     {
-                        printf("%ld %lf %lf", i, inc2rad(feedback[i]->actual_position, i),load_data[i]);
                         commend[i]->target_position = rad2inc(load_data[i], i);
+                        printf("%ld\t%lf\t%lf\\n", i + 1, inc2rad(feedback[i]->actual_position, i), load_data[i]);
+                        fprintf(fp, "%d,%ld,%lf,%lf,%d,%lf\n", count, i + 1, inc2rad(feedback[i]->actual_position, i),
+                                inc2rad2(feedback[i]->actual_velocity, i), feedback[i]->actual_torque, load_data[i]);
+                    
                     }
                 }
                 printf("\n");
@@ -379,6 +388,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
             ec_send_processdata();
             /* END USER CODE */
         }
+        count++;
     }
 }
 
@@ -468,6 +478,13 @@ int main(int argc, char *argv[])
 
     if (argc > 2)
     {
+        time_t rawtime;
+        time(&rawtime);
+        char str[128];
+        struct tm *tinfo = localtime(&rawtime);
+        strftime(str, sizeof(str), "/home/hit-666/SOEM/log/bb-%Y-%m-%d-%H:%M:%S.log", tinfo);
+        // int iret1;
+        fp = fopen(str, "a");
         dorun = 0;
         ctime = atoi(argv[2]);
 

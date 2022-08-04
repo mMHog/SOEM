@@ -74,8 +74,6 @@ typedef struct PACKED
 typedef struct PACKED
 {
     uint16 din;
-    int16 a;
-    int16 b;
     int16 ain1;
     int16 ain2;
 } WTPdo;
@@ -288,6 +286,17 @@ void redtest(char *ifname)
                 wfeedback[0] = (WTPdo *)(ec_slave[1].inputs);
                 
 
+
+                // wcommend[0]->empty1=0;
+                // wcommend[0]->empty2=0;
+                // wcommend[0]->empty3=0;
+                // wcommend[0]->empty4=0;
+                // wcommend[0]->empty5=0;
+                // wfeedback[0]->empty1=0;
+                // wfeedback[0]->empty2=0;
+                // wfeedback[0]->empty3=0;
+                // wfeedback[0]->empty4=0;
+                // wfeedback[0]->empty5=0;
                 wtran->command=wcommend[0]->dout=0;
                 wtran->feedback=wfeedback[0]->din=0;
                 wtran->Icommand=wcommend[0]->aout1=0;
@@ -517,7 +526,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                 wtran->Ufeedback=wfeedback[0]->ain2/V;
 
                 //printf("C:%d Success:%d Ready:%d Weld:%d Drive:%d Retro:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", (wfeedback[0]->din&(4))>>2, wfeedback[0]->din&1, (wfeedback[0]->din&(2))>>1, (wcommend[0]->dout&(1<<4))>>4, (wcommend[0]->dout&(1<<6))>>6, (wcommend[0]->dout&(1<<5))>>5, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
-printf("Command:%d Feedback:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", wcommend[0]->dout, wfeedback[0]->din, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
+                printf("Command:%d Feedback:%d Ifeedback:%.2lf Ufeedback:%.2lf Icommand:%.2lf Ucommand:%.2lf\n", wcommend[0]->dout, wfeedback[0]->din, wfeedback[0]->ain1/A, wfeedback[0]->ain2/V, wcommend[0]->aout1/A, wcommend[0]->aout2/V);
             }
             count++;
             dorun = 1;

@@ -29,6 +29,8 @@
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
 #define SERVO_NUMBER 18
+#define WELD_ON 0
+
 
 #define WELD (1<<4)
 #define DRIVE (1<<6)
@@ -37,6 +39,8 @@
 
 #define V 54.61333
 #define A 5.46133
+
+#define MEAN_NUM 5000
 
 FILE *fp;
 struct sched_param schedp;
@@ -55,13 +59,14 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-//  int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1};
-// int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
-int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+//int enable[SERVO_NUMBER] = {0, 0, 1, 0, 0, 0};
+//int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+int enable[SERVO_NUMBER] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
 // int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
 int w_enable=0;
 uint8 currentgroup = 0;
+double mean_p[MEAN_NUM];
 
 key_t key;
 int shm_id;
@@ -283,7 +288,10 @@ void redtest(char *ifname)
                 key = ftok("/dev/shm/myshm344", 0);
                 shm_id = shmget(key, 0x400000, IPC_CREAT | 0666);
                 tran = (Transfer *)shmat(shm_id, NULL, 0);
-                wtran=(WTransfer *)(tran+SERVO_NUMBER);
+                if (WELD_ON)
+                {
+                    wtran=(WTransfer *)(tran+SERVO_NUMBER);
+                }
 
                 for (int i = 0; i < SERVO_NUMBER; i++)
                 {
@@ -312,17 +320,20 @@ void redtest(char *ifname)
                         enable[i] = 2;
                     }
                 }
+                if (WELD_ON)
+                { 
+                    wcommend[0] = (WRPdo *)(ec_slave[SERVO_NUMBER + 1].outputs);
+                    wfeedback[0] = (WTPdo *)(ec_slave[SERVO_NUMBER + 1].inputs);
 
-                wcommend[0] = (WRPdo *)(ec_slave[SERVO_NUMBER + 1].outputs);
-                wfeedback[0] = (WTPdo *)(ec_slave[SERVO_NUMBER + 1].inputs);
+                    wtran->command=wcommend[0]->dout=0;
+                    //wtran->command=wcommend[0]->dout=16128;
+                    wtran->feedback=wfeedback[0]->din=0;
+                    wtran->Icommand=wcommend[0]->aout1=0;
+                    wtran->Ucommand=wcommend[0]->aout2=0;
+                    wtran->Ifeedback=wfeedback[0]->ain1=0;
+                    wtran->Ufeedback=wfeedback[0]->ain2=0;
+                }
 
-                wtran->command=wcommend[0]->dout=0;
-                //wtran->command=wcommend[0]->dout=16128;
-                wtran->feedback=wfeedback[0]->din=0;
-                wtran->Icommand=wcommend[0]->aout1=0;
-                wtran->Ucommand=wcommend[0]->aout2=0;
-                wtran->Ifeedback=wfeedback[0]->ain1=0;
-                wtran->Ufeedback=wfeedback[0]->ain2=0;
 
                 w_enable=1;
 
@@ -486,6 +497,7 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
     int count = 0;
     double speed, c;
     //double v = 0.1 / 2;
+    double mean=0;
     ec_send_processdata();
     while (1)
     {
@@ -513,21 +525,28 @@ OSAL_THREAD_FUNC_RT ecatthread(void *ptr)
                     // {
                     //     c = p - v;s
                     // }
-                    speed = inter_realize(c, 50, i);
+                    speed = inter_realize(c, 1000, i);
 
                     //    speed = PID_realize(c, i);
 
                     commend[i]->target_position = rad2inc(speed, i);
                     //commend[i]->target_velocity = 100 * (long int)(speed * 180 / 3.1415926 * incpdeg[i]);
                     //commend[i]->target_torque = -speed*10000;
-                    printf("%ld\t%lf\t%lf\t%lf\t%d\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed,feedback[i]->actual_position);
-                    fprintf(fp,"%d,%ld,%d,%d,%d,%ld,%ld,%ld,%ld\n",count,i+1,feedback[i]->actual_position,
-                    feedback[i]->actual_velocity,feedback[i]->actual_torque,rad2inc(c, i),rad2inc(inter[i].x, i),rad2inc2(inter[i].v, i),rad2inc2(inter[i].a, i));
+                    mean_p[count%MEAN_NUM]=feedback[i]->actual_position;
+                    mean=0;
+                    for (size_t kk = 0; kk < MEAN_NUM; kk++)
+                    {
+                        mean+=mean_p[kk];
+                    }
+                    mean/=MEAN_NUM;
+                    printf("%ld\t%lf\t%lf\t%lf\t%d\t%lf\n", i + 1, inc2rad(feedback[i]->actual_position, i), c, speed,feedback[i]->actual_position,mean);
+                    fprintf(fp, "%d,%ld,%lf,%lf,%d,%lf,%lf,%lf,%lf\n", count, i + 1, inc2rad(feedback[i]->actual_position, i),
+                            inc2rad2(feedback[i]->actual_velocity, i), feedback[i]->actual_torque, c, inter[i].x, inter[i].v, inter[i].a);
                 }
             }
 
 
-            if(all_enable == 1 && w_enable==1){
+            if(WELD_ON && all_enable == 1 && w_enable==1){
                 wcommend[0]->dout=wtran->command;
                 //if ((wfeedback[0]->din&(4))>>2==0) wcommend[0]->dout=0;
 
@@ -656,7 +675,7 @@ int main(int argc, char *argv[])
         time(&rawtime);
         char str[128];
         struct tm *tinfo=localtime(&rawtime);
-        strftime(str,sizeof(str),"/home/multi-arm/SOEM/log/bb-%Y-%m-%d-%H:%M:%S.log",tinfo);
+        strftime(str,sizeof(str),"/home/hit-666/SOEM/log/bb-%Y-%m-%d-%H:%M:%S.log",tinfo);
         // int iret1;
         fp=fopen(str, "a");
         //fprintf(fp,"cycle,index,pos_feedback,vel_feedback,tor_feedback,pos_command,inter_x,inter_v,inter_a\n");

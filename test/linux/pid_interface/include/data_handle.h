@@ -21,8 +21,13 @@
 #include <math.h>
 
 // long int zero_position[18] = {94879,-216914,268775,2558795,519740,190464,-341512,250790,110862,-2372377,-1973210,-225506,265421,266114,209112,152844,165471,2524202};
-long int zero_position[18] = {94878,-217157,-838561,2303737,464921,156548,-326860,250606,151374,-2372334,-2066403,-228709,-32145,-2689520,-2413203,-72078,16045,-1259861};
-long int incpdeg[18] = {-53521, 65238, -59738, -28017, 29126,-18120,-53521, 65238, -59738, -28017, 29126,-18120,-53521, 65238, -59738, -28017, -29126,-18120 };
+long int zero_position[18] = {-28129,979562,230434,-131607,2427951,-1176797,  
+							  -56737,67609,302859,-4939445,-7512,-3319151,  
+							  -89460,-1812698,-413453,-11044222,1574536,-379825};
+long int incpdeg[18] = {-53521,65238,-59738,-28017,-25486,-15969,
+						-53521,65238,-59738,-28017,-25486,-15969,
+						-55324,55706,-55708,-31147,-26970,26970};
+
 long int deg2inc(double deg, int i)
 {
 	return (long int)(deg * incpdeg[i]) + zero_position[i];
@@ -39,6 +44,10 @@ long int rad2inc2(double rad, int i)
 double inc2rad(long int inc, int i)
 {
 	return (((double)(inc - zero_position[i])) / incpdeg[i]) * 3.1415926 / 180;
+}
+double inc2rad2(long int inc, int i)
+{
+	return ((double)(inc) / incpdeg[i]) * 3.1415926 / 180;
 }
 int data_process(double *outputx, double x2, double x1, double v, double a, double delta)
 {

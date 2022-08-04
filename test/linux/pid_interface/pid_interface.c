@@ -33,7 +33,7 @@
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
-#define SERVO_NUMBER 18
+#define SERVO_NUMBER 6
 
 struct sched_param schedp;
 char IOmap[4096];
@@ -51,8 +51,8 @@ int expectedWKC;
 boolean needlf;
 volatile int wkc;
 boolean inOP;
-//int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1};
-int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
+int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1};
+//int enable[SERVO_NUMBER] = {0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1,0, 0, 0, 0, 0, 1};
 int all_enable;
 uint8 currentgroup = 0;
 
