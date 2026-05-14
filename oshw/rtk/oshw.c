@@ -1,7 +1,6 @@
 /*
- * This software is dual-licensed under GPLv3 and a commercial
- * license. See the file LICENSE.md distributed with this software for
- * full license information.
+ * Licensed under the GNU General Public License version 2 with exceptions. See
+ * LICENSE file in the project root for full license information
  */
 
 #include "oshw.h"
@@ -16,8 +15,8 @@
  */
 uint16 oshw_htons(const uint16 host)
 {
-   uint16 network = htons(host);
-   return network;
+	uint16 network = htons (host);
+	return network;
 }
 
 /**
@@ -28,27 +27,27 @@ uint16 oshw_htons(const uint16 host)
  */
 uint16 oshw_ntohs(const uint16 network)
 {
-   uint16 host = ntohs(network);
-   return host;
+	uint16 host = ntohs (network);
+	return host;
 }
 
 /* Create list over available network adapters.
  * @return First element in linked list of adapters
  */
-ec_adaptert *oshw_find_adapters(void)
+ec_adaptert * oshw_find_adapters(void)
 {
-   ec_adaptert *ret_adapter = NULL;
+   ec_adaptert * ret_adapter = NULL;
 
    /* TODO if needed */
 
    return ret_adapter;
 }
 
-/** Free allocated memory used by adapter collection.
+/** Free memory allocated memory used by adapter collection.
  * @param[in] adapter = First element in linked list of adapters
  * EC_NOFRAME.
  */
-void oshw_free_adapters(ec_adaptert *adapter)
+void oshw_free_adapters(ec_adaptert * adapter)
 {
-   /* TODO if needed */
+	   /* TODO if needed */
 }
